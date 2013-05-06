@@ -31,6 +31,8 @@
 
 #include "hw/virtio/virtio-bus.h"
 
+#define GUEST_BUG_TARGET        16
+
 static void balloon_page(void *addr, int deflate)
 {
 #if defined(__linux__)
@@ -195,6 +197,11 @@ static void virtio_balloon_handle_output(VirtIODevice *vdev, VirtQueue *vq)
             pa = (ram_addr_t)ldl_p(&pfn) << VIRTIO_BALLOON_PFN_SHIFT;
             offset += 4;
 
+            if (s->guest_bug_state != GUEST_BUG_GOOD) {
+                /* Still bug testing, not ready to use balloon yet */
+                continue;
+            }
+
             /* FIXME: remove get_system_memory(), but how? */
             section = memory_region_find(get_system_memory(), pa, 1);
             if (!int128_nz(section.size) || !memory_region_is_ram(section.mr))
@@ -259,8 +266,23 @@ static void virtio_balloon_get_config(VirtIODevice *vdev, uint8_t *config_data)
 {
     VirtIOBalloon *dev = VIRTIO_BALLOON(vdev);
     struct virtio_balloon_config config;
+    uint32_t num_pages;
 
-    config.num_pages = cpu_to_le32(dev->num_pages);
+    switch (dev->guest_bug_state) {
+    case GUEST_BUG_TESTING:
+        num_pages = GUEST_BUG_TARGET;
+        break;
+
+    case GUEST_BUG_CLEANUP:
+    case GUEST_BUG_BUGGY:
+        num_pages = 0;
+        break;
+
+    default:
+        num_pages = dev->num_pages;
+    }
+
+    config.num_pages = cpu_to_le32(num_pages);
     config.actual = cpu_to_le32(dev->actual);
 
     memcpy(config_data, &config, sizeof(struct virtio_balloon_config));
@@ -272,11 +294,41 @@ static void virtio_balloon_set_config(VirtIODevice *vdev,
     VirtIOBalloon *dev = VIRTIO_BALLOON(vdev);
     struct virtio_balloon_config config;
     uint32_t oldactual = dev->actual;
+
     memcpy(&config, config_data, sizeof(struct virtio_balloon_config));
     dev->actual = le32_to_cpu(config.actual);
-    if (dev->actual != oldactual) {
-        qemu_balloon_changed(ram_size -
-                       ((ram_addr_t) dev->actual << VIRTIO_BALLOON_PFN_SHIFT));
+
+    switch (dev->guest_bug_state) {
+    case GUEST_BUG_TESTING:
+        if (dev->actual == 0) {
+            /* Both buggy and non-buggy guests write a 0 before going
+             * on to write a meaningful value */
+            break;
+        }
+
+        if (dev->actual > GUEST_BUG_TARGET) {
+            fprintf(stderr, "virtio-balloon: Buggy guest detected, disabling balloon\n");
+            dev->guest_bug_state = GUEST_BUG_BUGGY;
+        } else {
+            dev->guest_bug_state = GUEST_BUG_CLEANUP;
+        }
+        /* Changing bug state implicitly alters the config */
+        virtio_notify_config(vdev);
+        break;
+
+    case GUEST_BUG_CLEANUP:
+        if (dev->actual == 0) {
+            /* Cleanup completed, proceed with normal operation */
+            dev->guest_bug_state = GUEST_BUG_GOOD;
+            virtio_notify_config(vdev);
+        }
+        break;
+
+    default:
+        if (dev->actual != oldactual) {
+            qemu_balloon_changed(ram_size -
+                                 ((ram_addr_t) dev->actual << VIRTIO_BALLOON_PFN_SHIFT));
+        }
     }
 }
 
@@ -298,12 +350,22 @@ static void virtio_balloon_to_target(void *opaque, ram_addr_t target)
     VirtIOBalloon *dev = VIRTIO_BALLOON(opaque);
     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
 
+    if (dev->guest_bug_state == GUEST_BUG_BUGGY) {
+        fprintf(stderr, "Guest is buggy, cannot use balloon\n");
+    }
+
     if (target > ram_size) {
         target = ram_size;
     }
     if (target) {
         dev->num_pages = (ram_size - target) >> VIRTIO_BALLOON_PFN_SHIFT;
         virtio_notify_config(vdev);
+
+        /* If we're still testing for guest bugs, delay the change
+         * interrupt until we've finished that */
+        if (dev->guest_bug_state == GUEST_BUG_GOOD) {
+            virtio_notify_config(vdev);
+        }
     }
 }
 
@@ -383,7 +445,19 @@ static void virtio_balloon_device_unrealize(DeviceState *dev, Error **errp)
 }
 
 static Property virtio_balloon_properties[] = {
+    DEFINE_PROP_INT32("guest_bug_state", VirtIOBalloon, guest_bug_state, 0),
     DEFINE_PROP_END_OF_LIST(),
+};
+
+static const VMStateDescription vmstate_virtio_balloon = {
+    .name = "HACK_virtio_balloon",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .minimum_version_id_old = 1,
+    .fields      = (VMStateField []) {
+        VMSTATE_INT32(guest_bug_state, VirtIOBalloon),
+        VMSTATE_END_OF_LIST()
+    },
 };
 
 static void virtio_balloon_class_init(ObjectClass *klass, void *data)
@@ -398,6 +472,7 @@ static void virtio_balloon_class_init(ObjectClass *klass, void *data)
     vdc->get_config = virtio_balloon_get_config;
     vdc->set_config = virtio_balloon_set_config;
     vdc->get_features = virtio_balloon_get_features;
+    dc->vmsd = &vmstate_virtio_balloon;
 }
 
 static const TypeInfo virtio_balloon_info = {

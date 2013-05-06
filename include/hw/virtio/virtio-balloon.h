@@ -67,6 +67,12 @@ typedef struct VirtIOBalloon {
     QEMUTimer *stats_timer;
     int64_t stats_last_update;
     int64_t stats_poll_interval;
+
+    int32_t guest_bug_state;
+#define GUEST_BUG_TESTING       0
+#define GUEST_BUG_CLEANUP       1
+#define GUEST_BUG_BUGGY         2
+#define GUEST_BUG_GOOD          3
 } VirtIOBalloon;
 
 #endif
