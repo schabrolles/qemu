@@ -46,12 +46,13 @@ int kvmppc_get_htab_fd(bool write);
 int kvmppc_save_htab(QEMUFile *f, int fd, size_t bufsize, int64_t max_ns);
 int kvmppc_load_htab_chunk(QEMUFile *f, int fd, uint32_t index,
                            uint16_t n_valid, uint16_t n_invalid);
+bool kvmppc_hwrng_present(void);
 uint64_t kvmppc_hash64_read_pteg(PowerPCCPU *cpu, target_ulong pte_index);
 void kvmppc_hash64_free_pteg(uint64_t token);
 
 void kvmppc_hash64_write_pte(CPUPPCState *env, target_ulong pte_index,
                              target_ulong pte0, target_ulong pte1);
-
+bool kvmppc_has_cap_fixup_hcalls(void);
 #else
 
 static inline uint32_t kvmppc_get_tbfreq(void)
@@ -205,6 +206,11 @@ static inline int kvmppc_load_htab_chunk(QEMUFile *f, int fd, uint32_t index,
                                          uint16_t n_valid, uint16_t n_invalid)
 {
     abort();
+}
+
+static inline bool kvmppc_hwrng_present(void)
+{
+    return false;
 }
 
 static inline uint64_t kvmppc_hash64_read_pteg(PowerPCCPU *cpu,

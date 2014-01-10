@@ -515,6 +515,21 @@ static void *spapr_create_fdt_skel(hwaddr initrd_base,
 
     _FDT((fdt_end_node(fdt)));
 
+    if (kvmppc_hwrng_present()) {
+        _FDT((fdt_begin_node(fdt, "ibm,platform-facilities")));
+
+        _FDT((fdt_property_string(fdt, "name", "ibm,platform-facilities")));
+        _FDT((fdt_property_string(fdt, "device_type",
+                                 "ibm,platform-facilities")));
+        _FDT((fdt_property_cell(fdt, "#address-cells", 0x1)));
+        _FDT((fdt_property_cell(fdt, "#size-cells", 0x0)));
+        _FDT((fdt_begin_node(fdt, "ibm,random-v1")));
+        _FDT((fdt_property_string(fdt, "name", "ibm,random-v1")));
+        _FDT((fdt_property_string(fdt, "compatible", "ibm,random")));
+        _FDT((fdt_end_node(fdt)));
+        _FDT((fdt_end_node(fdt)));
+    }
+
     /* event-sources */
     spapr_events_fdt_skel(fdt, epow_irq);
 
