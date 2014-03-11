@@ -79,7 +79,7 @@
 
 #define TIMEBASE_FREQ           512000000ULL
 
-#define MAX_CPUS                256
+#define MAX_CPUS                255
 #define XICS_IRQS               1024
 
 #define PHANDLE_XICP            0x00001111
