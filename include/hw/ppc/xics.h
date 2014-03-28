@@ -156,6 +156,8 @@ struct ICSIRQState {
     uint8_t flags;
 };
 
+#define XICS_IRQS               1024
+
 qemu_irq xics_get_qirq(XICSState *icp, int irq);
 int xics_alloc(XICSState *icp, int src, int irq_hint, bool lsi);
 int xics_alloc_block(XICSState *icp, int src, int num, bool lsi, bool align);
