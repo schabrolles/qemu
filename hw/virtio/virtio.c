@@ -538,6 +538,24 @@ void virtio_set_status(VirtIODevice *vdev, uint8_t val)
     vdev->status = val;
 }
 
+static void virtio_set_endian_target_default(VirtIODevice *vdev)
+{
+    if (target_words_bigendian()) {
+        vdev->device_endian = VIRTIO_DEVICE_ENDIAN_BIG;
+    } else {
+        vdev->device_endian = VIRTIO_DEVICE_ENDIAN_LITTLE;
+    }
+}
+
+static void virtio_set_endian_cpu(VirtIODevice *vdev, CPUState *cpu)
+{
+    if (cpu_virtio_is_big_endian(cpu)) {
+        vdev->device_endian = VIRTIO_DEVICE_ENDIAN_BIG;
+    } else {
+        vdev->device_endian = VIRTIO_DEVICE_ENDIAN_LITTLE;
+    }
+}
+
 void virtio_reset(void *opaque)
 {
     VirtIODevice *vdev = opaque;
@@ -545,6 +563,13 @@ void virtio_reset(void *opaque)
     int i;
 
     virtio_set_status(vdev, 0);
+    if (current_cpu) {
+        /* Guest initiated reset */
+        virtio_set_endian_cpu(vdev, current_cpu);
+    } else {
+        /* System reset */
+        virtio_set_endian_target_default(vdev);
+    }
 
     if (k->reset) {
         k->reset(vdev);
@@ -897,6 +922,15 @@ int virtio_load(VirtIODevice *vdev, QEMUFile *f)
     BusState *qbus = qdev_get_parent_bus(DEVICE(vdev));
     VirtioBusClass *k = VIRTIO_BUS_GET_CLASS(qbus);
 
+    /*
+     * PPC64 hack: since we don't migrate device_endian yet, we have to compute
+     * it from the CPU state. This works because the following assumptions are
+     * met:
+     * - CPU state is restored before virtio devices
+     * - LPCR has the same value on all CPUs
+     */
+    virtio_set_endian_cpu(vdev, first_cpu);
+
     if (k->load_config) {
         ret = k->load_config(qbus->parent, f);
         if (ret)
@@ -1013,6 +1047,7 @@ void virtio_init(VirtIODevice *vdev, const char *name,
     }
     vdev->vmstate = qemu_add_vm_change_state_handler(virtio_vmstate_change,
                                                      vdev);
+    virtio_set_endian_target_default(vdev);
 }
 
 hwaddr virtio_queue_get_desc_addr(VirtIODevice *vdev, int n)
