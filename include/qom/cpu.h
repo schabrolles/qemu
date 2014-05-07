@@ -112,6 +112,7 @@ typedef struct CPUClass {
     bool (*has_work)(CPUState *cpu);
     void (*do_interrupt)(CPUState *cpu);
     CPUUnassignedAccess do_unassigned_access;
+    bool (*virtio_is_big_endian)(CPUState *cpu);
     int (*memory_rw_debug)(CPUState *cpu, vaddr addr,
                            uint8_t *buf, int len, bool is_write);
     void (*dump_state)(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
@@ -545,6 +546,13 @@ void cpu_interrupt(CPUState *cpu, int mask);
 #endif /* USER_ONLY */
 
 #ifndef CONFIG_USER_ONLY
+
+static inline bool cpu_virtio_is_big_endian(CPUState *cpu)
+{
+    CPUClass *cc = CPU_GET_CLASS(cpu);
+
+    return cc->virtio_is_big_endian(cpu);
+}
 
 static inline void cpu_unassigned_access(CPUState *cpu, hwaddr addr,
                                          bool is_write, bool is_exec,
