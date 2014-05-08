@@ -983,7 +983,7 @@ static inline void *host_from_stream_offset(QEMUFile *f,
  */
 void ram_handle_compressed(void *host, uint8_t ch, uint64_t size)
 {
-    if (ch != 0 || !is_zero_range(host, size)) {
+    if (1 || ch != 0 || !is_zero_range(host, size)) {
         memset(host, ch, size);
     }
 }
