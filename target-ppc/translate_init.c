@@ -3112,6 +3112,18 @@ static int check_pow_hid0_74xx (CPUPPCState *env)
     return 0;
 }
 
+static bool ppc_cpu_interrupts_big_endian_always(PowerPCCPU *cpu)
+{
+    return true;
+}
+
+#ifdef TARGET_PPC64
+static bool ppc_cpu_interrupts_big_endian_lpcr(PowerPCCPU *cpu)
+{
+    return !(cpu->env.spr[SPR_LPCR] & LPCR_ILE);
+}
+#endif
+
 /*****************************************************************************/
 /* PowerPC implementations definitions                                       */
 
@@ -8095,6 +8107,7 @@ POWERPC_FAMILY(POWER7)(ObjectClass *oc, void *data)
                  POWERPC_FLAG_VSX;
     pcc->l1_dcache_size = 0x8000;
     pcc->l1_icache_size = 0x8000;
+    pcc->interrupts_big_endian = ppc_cpu_interrupts_big_endian_lpcr;
 }
 
 POWERPC_FAMILY(POWER7P)(ObjectClass *oc, void *data)
@@ -8155,6 +8168,7 @@ POWERPC_FAMILY(POWER7P)(ObjectClass *oc, void *data)
                  POWERPC_FLAG_VSX;
     pcc->l1_dcache_size = 0x8000;
     pcc->l1_icache_size = 0x8000;
+    pcc->interrupts_big_endian = ppc_cpu_interrupts_big_endian_lpcr;
 }
 
 static void init_proc_POWER8(CPUPPCState *env)
@@ -8223,6 +8237,7 @@ POWERPC_FAMILY(POWER8)(ObjectClass *oc, void *data)
                  POWERPC_FLAG_VSX;
     pcc->l1_dcache_size = 0x8000;
     pcc->l1_icache_size = 0x8000;
+    pcc->interrupts_big_endian = ppc_cpu_interrupts_big_endian_lpcr;
 }
 #endif /* defined (TARGET_PPC64) */
 
@@ -9622,6 +9637,7 @@ static void ppc_cpu_class_init(ObjectClass *oc, void *data)
     pcc->parent_realize = dc->realize;
     pcc->pvr = CPU_POWERPC_DEFAULT_MASK;
     pcc->pvr_mask = CPU_POWERPC_DEFAULT_MASK;
+    pcc->interrupts_big_endian = ppc_cpu_interrupts_big_endian_always;
     dc->realize = ppc_cpu_realizefn;
     dc->unrealize = ppc_cpu_unrealizefn;
 

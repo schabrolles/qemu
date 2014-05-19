@@ -77,6 +77,7 @@ typedef struct PowerPCCPUClass {
     int (*handle_mmu_fault)(PowerPCCPU *cpu, target_ulong eaddr, int rwx,
                             int mmu_idx);
 #endif
+    bool (*interrupts_big_endian)(PowerPCCPU *cpu);
 } PowerPCCPUClass;
 
 /**
