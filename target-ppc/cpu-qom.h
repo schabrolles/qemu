@@ -82,6 +82,7 @@ typedef struct PowerPCCPUClass {
  * PowerPCCPU:
  * @env: #CPUPPCState
  * @cpu_dt_id: CPU index used in the device tree. KVM uses this index too
+ * @max_compat: Maximal supported logical PVR from the command line
  *
  * A PowerPC CPU.
  */
@@ -92,6 +93,7 @@ struct PowerPCCPU {
 
     CPUPPCState env;
     int cpu_dt_id;
+    uint32_t max_compat;
 };
 
 static inline PowerPCCPU *ppc_env_get_cpu(CPUPPCState *env)
