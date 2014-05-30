@@ -159,6 +159,7 @@ struct ICSIRQState {
 qemu_irq xics_get_qirq(XICSState *icp, int irq);
 int xics_alloc(XICSState *icp, int src, int irq_hint, bool lsi);
 int xics_alloc_block(XICSState *icp, int src, int num, bool lsi, bool align);
+void xics_free(XICSState *icp, int irq, int num);
 
 void xics_cpu_setup(XICSState *icp, PowerPCCPU *cpu);
 
