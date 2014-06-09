@@ -122,4 +122,5 @@ void qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque);
 
 #endif
 
+bool target_words_bigendian(void);
 #endif /* !CPU_COMMON_H */

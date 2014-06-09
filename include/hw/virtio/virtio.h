@@ -253,4 +253,9 @@ void virtio_queue_set_host_notifier_fd_handler(VirtQueue *vq, bool assign,
                                                bool set_handler);
 void virtio_queue_notify_vq(VirtQueue *vq);
 void virtio_irq(VirtQueue *vq);
+
+static inline bool virtio_is_big_endian(void)
+{
+    return target_words_bigendian();
+}
 #endif
