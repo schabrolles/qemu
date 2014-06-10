@@ -262,6 +262,10 @@ int e820_add_entry(uint64_t, uint64_t, uint32_t);
 
 #define PC_COMPAT_1_7 \
         {\
+            .driver   = "virtio-scsi-pci",\
+            .property = "any_layout",\
+            .value    = "off",\
+        },{\
             .driver   = TYPE_USB_DEVICE,\
             .property = "msos-desc",\
             .value    = "no",\
