@@ -27,12 +27,7 @@ typedef struct VirtIOSCSIReq {
     VirtQueueElement elem;
     QEMUSGList qsgl;
     SCSIRequest *sreq;
-    union {
-        char                  *buf;
-        VirtIOSCSICmdReq      *cmd;
-        VirtIOSCSICtrlTMFReq  *tmf;
-        VirtIOSCSICtrlANReq   *an;
-    } req;
+    size_t resp_size;
     union {
         char                  *buf;
         VirtIOSCSICmdResp     *cmd;
@@ -40,6 +35,12 @@ typedef struct VirtIOSCSIReq {
         VirtIOSCSICtrlANResp  *an;
         VirtIOSCSIEvent       *event;
     } resp;
+    union {
+        char                  *buf;
+        VirtIOSCSICmdReq      *cmd;
+        VirtIOSCSICtrlTMFReq  *tmf;
+        VirtIOSCSICtrlANReq   *an;
+    } req;
 } VirtIOSCSIReq;
 
 static inline int virtio_scsi_get_lun(uint8_t *lun)
@@ -137,6 +138,7 @@ static int virtio_scsi_parse_req(VirtIOSCSIReq *req,
         return -EINVAL;
     }
     req->resp.buf = req->elem.in_sg[0].iov_base;
+    req->resp_size = resp_size;
 
     if (req->elem.out_num > 1) {
         qemu_sgl_concat(req, &req->elem.out_sg[1],
@@ -359,9 +361,8 @@ static void virtio_scsi_command_complete(SCSIRequest *r, uint32_t status,
                                          size_t resid)
 {
     VirtIOSCSIReq *req = r->hba_private;
-    VirtIOSCSI *s = req->dev;
-    VirtIOSCSICommon *vs = VIRTIO_SCSI_COMMON(s);
-    VirtIODevice *vdev = VIRTIO_DEVICE(s);
+    VirtIODevice *vdev = VIRTIO_DEVICE(req->dev);
+    uint8_t sense[SCSI_SENSE_BUF_SIZE];
     uint32_t sense_len;
 
     if (r->io_canceled) {
@@ -374,8 +375,9 @@ static void virtio_scsi_command_complete(SCSIRequest *r, uint32_t status,
         req->resp.cmd->resid = virtio_tswap32(vdev, resid);
     } else {
         req->resp.cmd->resid = 0;
-        sense_len = scsi_req_get_sense(r, req->resp.cmd->sense,
-                                       vs->sense_size);
+        sense_len = scsi_req_get_sense(r, sense, sizeof(sense));
+        sense_len = MIN(sense_len, req->resp_size - sizeof(req->resp.cmd));
+        memcpy(req->resp.cmd->sense, sense, sense_len);
         req->resp.cmd->sense_len = virtio_tswap32(vdev, sense_len);
     }
     virtio_scsi_complete_req(req);
