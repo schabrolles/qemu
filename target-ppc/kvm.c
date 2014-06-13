@@ -1375,7 +1375,7 @@ static int read_cpuinfo(const char *field, char *value, int len)
     }
 
     do {
-        if(!fgets(line, sizeof(line), f)) {
+        if (!fgets(line, sizeof(line), f)) {
             break;
         }
         if (!strncmp(line, field, field_len)) {
@@ -1408,6 +1408,48 @@ uint32_t kvmppc_get_tbfreq(void)
 
     retval = atoi(ns);
     return retval;
+}
+
+int32_t kvmppc_get_host_serial(char *value, int len)
+{
+    FILE *f;
+    int ret = -1;
+    char line[512];
+
+    memset(line, 0, sizeof(line));
+    f = fopen("/proc/device-tree/system-id", "r");
+    if (!f) {
+        return ret;
+    }
+
+    if (fgets(line, sizeof(line), f)) {
+        snprintf(value, len, "IBM,%s", line);
+        ret = 0;
+    }
+    fclose(f);
+
+    return ret;
+}
+
+int32_t kvmppc_get_host_model(char *value, int len)
+{
+    FILE *f;
+    int ret = -1;
+    char line[512];
+
+    memset(line, 0, sizeof(line));
+    f = fopen("/proc/device-tree/model", "r");
+    if (!f) {
+        return ret;
+    }
+
+    if (fgets(line, sizeof(line), f)) {
+        snprintf(value, len, "IBM,%s", line);
+        ret = 0;
+    }
+    fclose(f);
+
+    return ret;
 }
 
 /* Try to find a device tree node for a CPU with clock-frequency property */
