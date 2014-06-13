@@ -159,3 +159,11 @@ void ppc_store_msr(CPUPPCState *env, target_ulong value)
 {
     hreg_store_msr(env, value, 0);
 }
+
+bool system_is_big_endian(void)
+{
+    PowerPCCPU *cpu = POWERPC_CPU(first_cpu);
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
+
+    return (*pcc->interrupts_big_endian)(cpu);
+}

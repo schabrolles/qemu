@@ -2313,4 +2313,6 @@ int ppc_get_vcpu_dt_id(PowerPCCPU *cpu);
  */
 PowerPCCPU *ppc_get_vcpu_by_dt_id(int cpu_dt_id);
 
+bool system_is_big_endian(void);
+
 #endif /* !defined (__CPU_PPC_H__) */
