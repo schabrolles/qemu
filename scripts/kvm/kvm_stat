@@ -175,18 +175,22 @@ x86_exit_reasons = {
 }
 
 sc_perf_evt_open = None
-exit_reasons = None
+
+filters = {
+    'kvm_userspace_exit': ('reason', generic_exit_reasons)
+}
 
 def x86_init(flag):
     globals().update({
         'sc_perf_evt_open' : 298,
-        'exit_reasons' : x86_exit_reasons[flag],
+        'filters' : {
+            'kvm_exit': ('exit_reason', x86_exit_reasons[flag])
+        },
     })
 
 def s390_init():
     globals().update({
         'sc_perf_evt_open' : 331,
-        'exit_reasons' : generic_exit_reasons,
     })
 
 def detect_platform():
@@ -203,10 +207,6 @@ def detect_platform():
                     return
 
 detect_platform()
-
-filters = {
-    'kvm_exit': ('exit_reason', exit_reasons)
-}
 
 def invert(d):
     return dict((x[1], x[0]) for x in d.iteritems())
