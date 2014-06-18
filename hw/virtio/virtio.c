@@ -936,7 +936,12 @@ int virtio_load(VirtIODevice *vdev, QEMUFile *f)
      * - CPU state is restored before virtio devices
      * - LPCR has the same value on all CPUs
      */
-    virtio_set_endian_cpu(vdev, first_cpu);
+#if defined (TARGET_PPC64)
+    if (system_is_big_endian()) {
+        vdev->device_endian = VIRTIO_DEVICE_ENDIAN_BIG;
+    } else
+#endif
+        vdev->device_endian = VIRTIO_DEVICE_ENDIAN_LITTLE;
 
     if (k->load_config) {
         ret = k->load_config(qbus->parent, f);
