@@ -1015,27 +1015,89 @@ typedef void vga_draw_glyph9_func(uint8_t *d, int linesize,
 typedef void vga_draw_line_func(VGACommonState *s1, uint8_t *d,
                                 const uint8_t *s, int width);
 
+#ifdef TARGET_WORDS_BIGENDIAN
+static bool vga_is_be = true;
+#else
+static bool vga_is_be = false;
+#endif
+
+void vga_set_big_endian(bool be)
+{
+    vga_is_be = be;
+}
+
+static inline bool vga_is_big_endian(VGACommonState *s)
+{
+    return vga_is_be;
+}
+
+#define BGR_FORMAT 0
+#define PIX_BE 0
 #define DEPTH 8
 #include "vga_template.h"
 
+#define BGR_FORMAT 0
+#define PIX_BE 0
 #define DEPTH 15
 #include "vga_template.h"
 
-#define BGR_FORMAT
+#define BGR_FORMAT 1
+#define PIX_BE 0
 #define DEPTH 15
 #include "vga_template.h"
 
+#define BGR_FORMAT 0
+#define PIX_BE 0
 #define DEPTH 16
 #include "vga_template.h"
 
-#define BGR_FORMAT
+#define BGR_FORMAT 1
+#define PIX_BE 0
 #define DEPTH 16
 #include "vga_template.h"
 
+#define BGR_FORMAT 0
+#define PIX_BE 0
 #define DEPTH 32
 #include "vga_template.h"
 
-#define BGR_FORMAT
+#define BGR_FORMAT 1
+#define PIX_BE 0
+#define DEPTH 32
+#include "vga_template.h"
+
+#define BGR_FORMAT 0
+#define PIX_BE 1
+#define DEPTH 8
+#include "vga_template.h"
+
+#define BGR_FORMAT 0
+#define PIX_BE 1
+#define DEPTH 15
+#include "vga_template.h"
+
+#define BGR_FORMAT 1
+#define PIX_BE 1
+#define DEPTH 15
+#include "vga_template.h"
+
+#define BGR_FORMAT 0
+#define PIX_BE 1
+#define DEPTH 16
+#include "vga_template.h"
+
+#define BGR_FORMAT 1
+#define PIX_BE 1
+#define DEPTH 16
+#include "vga_template.h"
+
+#define BGR_FORMAT 0
+#define PIX_BE 1
+#define DEPTH 32
+#include "vga_template.h"
+
+#define BGR_FORMAT 1
+#define PIX_BE 1
 #define DEPTH 32
 #include "vga_template.h"
 
@@ -1518,10 +1580,14 @@ enum {
     VGA_DRAW_LINE4D2,
     VGA_DRAW_LINE8D2,
     VGA_DRAW_LINE8,
-    VGA_DRAW_LINE15,
-    VGA_DRAW_LINE16,
-    VGA_DRAW_LINE24,
-    VGA_DRAW_LINE32,
+    VGA_DRAW_LINE15_LE,
+    VGA_DRAW_LINE16_LE,
+    VGA_DRAW_LINE24_LE,
+    VGA_DRAW_LINE32_LE,
+    VGA_DRAW_LINE15_BE,
+    VGA_DRAW_LINE16_BE,
+    VGA_DRAW_LINE24_BE,
+    VGA_DRAW_LINE32_BE,
     VGA_DRAW_LINE_NB,
 };
 
@@ -1574,37 +1640,69 @@ static vga_draw_line_func * const vga_draw_line_table[NB_DEPTHS * VGA_DRAW_LINE_
     vga_draw_line8_16,
     vga_draw_line8_16,
 
-    vga_draw_line15_8,
-    vga_draw_line15_15,
-    vga_draw_line15_16,
-    vga_draw_line15_32,
-    vga_draw_line15_32bgr,
-    vga_draw_line15_15bgr,
-    vga_draw_line15_16bgr,
+    vga_draw_line15_8_le,
+    vga_draw_line15_15_le,
+    vga_draw_line15_16_le,
+    vga_draw_line15_32_le,
+    vga_draw_line15_32bgr_le,
+    vga_draw_line15_15bgr_le,
+    vga_draw_line15_16bgr_le,
 
-    vga_draw_line16_8,
-    vga_draw_line16_15,
-    vga_draw_line16_16,
-    vga_draw_line16_32,
-    vga_draw_line16_32bgr,
-    vga_draw_line16_15bgr,
-    vga_draw_line16_16bgr,
+    vga_draw_line16_8_le,
+    vga_draw_line16_15_le,
+    vga_draw_line16_16_le,
+    vga_draw_line16_32_le,
+    vga_draw_line16_32bgr_le,
+    vga_draw_line16_15bgr_le,
+    vga_draw_line16_16bgr_le,
 
-    vga_draw_line24_8,
-    vga_draw_line24_15,
-    vga_draw_line24_16,
-    vga_draw_line24_32,
-    vga_draw_line24_32bgr,
-    vga_draw_line24_15bgr,
-    vga_draw_line24_16bgr,
+    vga_draw_line24_8_le,
+    vga_draw_line24_15_le,
+    vga_draw_line24_16_le,
+    vga_draw_line24_32_le,
+    vga_draw_line24_32bgr_le,
+    vga_draw_line24_15bgr_le,
+    vga_draw_line24_16bgr_le,
 
-    vga_draw_line32_8,
-    vga_draw_line32_15,
-    vga_draw_line32_16,
-    vga_draw_line32_32,
-    vga_draw_line32_32bgr,
-    vga_draw_line32_15bgr,
-    vga_draw_line32_16bgr,
+    vga_draw_line32_8_le,
+    vga_draw_line32_15_le,
+    vga_draw_line32_16_le,
+    vga_draw_line32_32_le,
+    vga_draw_line32_32bgr_le,
+    vga_draw_line32_15bgr_le,
+    vga_draw_line32_16bgr_le,
+
+    vga_draw_line15_8_be,
+    vga_draw_line15_15_be,
+    vga_draw_line15_16_be,
+    vga_draw_line15_32_be,
+    vga_draw_line15_32bgr_be,
+    vga_draw_line15_15bgr_be,
+    vga_draw_line15_16bgr_be,
+
+    vga_draw_line16_8_be,
+    vga_draw_line16_15_be,
+    vga_draw_line16_16_be,
+    vga_draw_line16_32_be,
+    vga_draw_line16_32bgr_be,
+    vga_draw_line16_15bgr_be,
+    vga_draw_line16_16bgr_be,
+
+    vga_draw_line24_8_be,
+    vga_draw_line24_15_be,
+    vga_draw_line24_16_be,
+    vga_draw_line24_32_be,
+    vga_draw_line24_32bgr_be,
+    vga_draw_line24_15bgr_be,
+    vga_draw_line24_16bgr_be,
+
+    vga_draw_line32_8_be,
+    vga_draw_line32_15_be,
+    vga_draw_line32_16_be,
+    vga_draw_line32_32_be,
+    vga_draw_line32_32bgr_be,
+    vga_draw_line32_15bgr_be,
+    vga_draw_line32_16bgr_be,
 };
 
 static int vga_get_bpp(VGACommonState *s)
@@ -1677,10 +1775,14 @@ static void vga_draw_graphic(VGACommonState *s, int full_update)
     uint8_t *d;
     uint32_t v, addr1, addr;
     vga_draw_line_func *vga_draw_line;
-#if defined(HOST_WORDS_BIGENDIAN) == defined(TARGET_WORDS_BIGENDIAN)
-    static const bool byteswap = false;
+    bool byteswap, is_be;
+
+    is_be = vga_is_big_endian(s);
+
+#ifdef HOST_WORDS_BIGENDIAN
+    byteswap = !is_be;
 #else
-    static const bool byteswap = true;
+    byteswap = is_be;
 #endif
 
     full_update |= update_basic_params(s);
@@ -1723,7 +1825,8 @@ static void vga_draw_graphic(VGACommonState *s, int full_update)
     if (s->line_offset != s->last_line_offset ||
         disp_width != s->last_width ||
         height != s->last_height ||
-        s->last_depth != depth) {
+        s->last_depth != depth ||
+        s->last_bswap != byteswap) {
         if (depth == 32 || (depth == 16 && !byteswap)) {
             surface = qemu_create_displaysurface_from(disp_width,
                     height, depth, s->line_offset,
@@ -1739,6 +1842,7 @@ static void vga_draw_graphic(VGACommonState *s, int full_update)
         s->last_height = height;
         s->last_line_offset = s->line_offset;
         s->last_depth = depth;
+	s->last_bswap = byteswap;
         full_update = 1;
     } else if (is_buffer_shared(surface) &&
                (full_update || surface_data(surface) != s->vram_ptr
@@ -1782,19 +1886,19 @@ static void vga_draw_graphic(VGACommonState *s, int full_update)
             bits = 8;
             break;
         case 15:
-            v = VGA_DRAW_LINE15;
+            v = is_be ? VGA_DRAW_LINE15_BE : VGA_DRAW_LINE15_LE;
             bits = 16;
             break;
         case 16:
-            v = VGA_DRAW_LINE16;
+            v = is_be ? VGA_DRAW_LINE16_BE : VGA_DRAW_LINE16_LE;
             bits = 16;
             break;
         case 24:
-            v = VGA_DRAW_LINE24;
+            v = is_be ? VGA_DRAW_LINE24_BE : VGA_DRAW_LINE24_LE;
             bits = 24;
             break;
         case 32:
-            v = VGA_DRAW_LINE32;
+            v = is_be ? VGA_DRAW_LINE32_BE : VGA_DRAW_LINE32_LE;
             bits = 32;
             break;
         }

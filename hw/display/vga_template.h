@@ -35,13 +35,24 @@
 #error unsupport depth
 #endif
 
-#ifdef BGR_FORMAT
-#define PIXEL_NAME glue(DEPTH, bgr)
-#else
+#if BGR_FORMAT
+#if PIX_BE
+#define PIXEL_FNAME glue(DEPTH,bgr_be)
+#else /* PIX_BE */
+#define PIXEL_FNAME glue(DEPTH,bgr_le)
+#endif /* PIX_BE */ 
+#define PIXEL_NAME glue(DEPTH,bgr)
+#else /* BGR_FORMAT */
+#if PIX_BE
+#define PIXEL_FNAME glue(DEPTH,_be)
+#else /* PIX_BE */
+#define PIXEL_FNAME glue(DEPTH,_le)
+#endif /* PIX_BE */
 #define PIXEL_NAME DEPTH
 #endif /* BGR_FORMAT */
 
-#if DEPTH != 15 && !defined(BGR_FORMAT)
+
+#if DEPTH != 15 && !BGR_FORMAT && !PIX_BE
 
 static inline void glue(vga_draw_glyph_line_, DEPTH)(uint8_t *d,
                                                      uint32_t font_data,
@@ -350,10 +361,10 @@ static void glue(vga_draw_line8_, DEPTH)(VGACommonState *s1, uint8_t *d,
 /*
  * 15 bit color
  */
-static void glue(vga_draw_line15_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
+static void glue(vga_draw_line15_, PIXEL_FNAME)(VGACommonState *s1, uint8_t *d,
                                           const uint8_t *s, int width)
 {
-#if DEPTH == 15 && defined(HOST_WORDS_BIGENDIAN) == defined(TARGET_WORDS_BIGENDIAN)
+#if DEPTH == 15 && PIX_BE == defined(HOST_WORDS_BIGENDIAN)
     memcpy(d, s, width * 2);
 #else
     int w;
@@ -361,7 +372,11 @@ static void glue(vga_draw_line15_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
 
     w = width;
     do {
-        v = lduw_raw((void *)s);
+#if PIX_BE
+        v = lduw_be_p((void *)s);
+#else
+        v = lduw_le_p((void *)s);
+#endif
         r = (v >> 7) & 0xf8;
         g = (v >> 2) & 0xf8;
         b = (v << 3) & 0xf8;
@@ -375,10 +390,10 @@ static void glue(vga_draw_line15_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
 /*
  * 16 bit color
  */
-static void glue(vga_draw_line16_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
+static void glue(vga_draw_line16_, PIXEL_FNAME)(VGACommonState *s1, uint8_t *d,
                                           const uint8_t *s, int width)
 {
-#if DEPTH == 16 && defined(HOST_WORDS_BIGENDIAN) == defined(TARGET_WORDS_BIGENDIAN)
+#if DEPTH == 16 && PIX_BE == defined(HOST_WORDS_BIGENDIAN)
     memcpy(d, s, width * 2);
 #else
     int w;
@@ -386,7 +401,11 @@ static void glue(vga_draw_line16_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
 
     w = width;
     do {
-        v = lduw_raw((void *)s);
+#if PIX_BE
+        v = lduw_be_p((void *)s);
+#else
+        v = lduw_le_p((void *)s);
+#endif
         r = (v >> 8) & 0xf8;
         g = (v >> 3) & 0xfc;
         b = (v << 3) & 0xf8;
@@ -400,7 +419,7 @@ static void glue(vga_draw_line16_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
 /*
  * 24 bit color
  */
-static void glue(vga_draw_line24_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
+static void glue(vga_draw_line24_, PIXEL_FNAME)(VGACommonState *s1, uint8_t *d,
                                           const uint8_t *s, int width)
 {
     int w;
@@ -408,7 +427,7 @@ static void glue(vga_draw_line24_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
 
     w = width;
     do {
-#if defined(TARGET_WORDS_BIGENDIAN)
+#if PIX_BE
         r = s[0];
         g = s[1];
         b = s[2];
@@ -426,10 +445,10 @@ static void glue(vga_draw_line24_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
 /*
  * 32 bit color
  */
-static void glue(vga_draw_line32_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
+static void glue(vga_draw_line32_, PIXEL_FNAME)(VGACommonState *s1, uint8_t *d,
                                           const uint8_t *s, int width)
 {
-#if DEPTH == 32 && defined(HOST_WORDS_BIGENDIAN) == defined(TARGET_WORDS_BIGENDIAN) && !defined(BGR_FORMAT)
+#if DEPTH == 32 && !BGR_FORMAT && PIX_BE == defined(HOST_WORDS_BIGENDIAN)
     memcpy(d, s, width * 4);
 #else
     int w;
@@ -437,7 +456,7 @@ static void glue(vga_draw_line32_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
 
     w = width;
     do {
-#if defined(TARGET_WORDS_BIGENDIAN)
+#if PIX_BE
         r = s[1];
         g = s[2];
         b = s[3];
@@ -458,4 +477,7 @@ static void glue(vga_draw_line32_, PIXEL_NAME)(VGACommonState *s1, uint8_t *d,
 #undef BPP
 #undef PIXEL_TYPE
 #undef PIXEL_NAME
+#undef PIXEL_FNAME
 #undef BGR_FORMAT
+#undef PIX_BE
+

@@ -888,6 +888,8 @@ static target_ulong h_logical_dcbf(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
+extern void vga_set_big_endian(bool trueis_be);
+
 static target_ulong h_set_mode_resouce_le(PowerPCCPU *cpu,
                                           target_ulong mflags,
                                           target_ulong value1,
@@ -907,12 +909,14 @@ static target_ulong h_set_mode_resouce_le(PowerPCCPU *cpu,
         CPU_FOREACH(cs) {
             set_spr(cs, SPR_LPCR, 0, LPCR_ILE);
         }
+        vga_set_big_endian(true);
         return H_SUCCESS;
 
     case H_SET_MODE_ENDIAN_LITTLE:
         CPU_FOREACH(cs) {
             set_spr(cs, SPR_LPCR, LPCR_ILE, LPCR_ILE);
         }
+        vga_set_big_endian(false);
         return H_SUCCESS;
     }
 

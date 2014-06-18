@@ -147,6 +147,7 @@ typedef struct VGACommonState {
     uint32_t last_width, last_height; /* in chars or pixels */
     uint32_t last_scr_width, last_scr_height; /* in pixels */
     uint32_t last_depth; /* in bits */
+    bool last_bswap;
     uint8_t cursor_start, cursor_end;
     bool cursor_visible_phase;
     int64_t cursor_blink_time;
@@ -203,6 +204,8 @@ void vga_init_vbe(VGACommonState *s, Object *obj, MemoryRegion *address_space);
 uint32_t vbe_ioport_read_data(void *opaque, uint32_t addr);
 void vbe_ioport_write_index(void *opaque, uint32_t addr, uint32_t val);
 void vbe_ioport_write_data(void *opaque, uint32_t addr, uint32_t val);
+
+void vga_set_big_endian(bool be);
 
 extern const uint8_t sr_mask[8];
 extern const uint8_t gr_mask[16];
