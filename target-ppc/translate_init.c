@@ -9577,6 +9577,8 @@ static bool ppc_cpu_is_big_endian(CPUState *cs)
     PowerPCCPU *cpu = POWERPC_CPU(cs);
     CPUPPCState *env = &cpu->env;
 
+    cpu_synchronize_state(cs);
+
     return !msr_le;
 }
 #endif
