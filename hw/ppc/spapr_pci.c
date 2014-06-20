@@ -1402,7 +1402,7 @@ static const VMStateDescription vmstate_spapr_pci_lsi = {
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
     .fields      = (VMStateField []) {
-        VMSTATE_UINT32_EQUAL(irq, struct spapr_pci_lsi),
+        VMSTATE_UINT32(irq, struct spapr_pci_lsi),
 
         VMSTATE_END_OF_LIST()
     },
