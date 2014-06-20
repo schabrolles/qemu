@@ -536,6 +536,14 @@ static void ics_reset(DeviceState *dev)
     }
 }
 
+static void ics_free(ICSState *ics, int srcno, int num);
+
+static int ics_pre_load(ICSState *ics)
+{
+    ics_free(ics, 0, ics->nr_irqs);
+    return 0;
+}
+
 static int ics_post_load(ICSState *ics, int version_id)
 {
     int i;
@@ -641,6 +649,7 @@ static void ics_class_init(ObjectClass *klass, void *data)
     dc->realize = ics_realize;
     dc->vmsd = &vmstate_ics;
     dc->reset = ics_reset;
+    isc->pre_load = ics_pre_load;
     isc->post_load = ics_post_load;
 }
 
