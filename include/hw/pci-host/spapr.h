@@ -85,6 +85,14 @@ struct sPAPRPHBState {
     int32_t msi_devs_num;
     spapr_pci_msi_mig *msi_devs;
 
+    /* PowerKVM 2.1.0 backward compatibility */
+    struct {
+#define PCI_BUS_MAX             0xFF
+#define SPAPR_PCI_BUS_SHIFT     5
+        uint8_t *msi;
+        uint8_t *msix;
+    } v1;
+
     QLIST_ENTRY(sPAPRPHBState) list;
 };
 

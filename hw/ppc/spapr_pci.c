@@ -299,6 +299,87 @@ static void spapr_msi_setmsg(PCIDevice *pdev, hwaddr addr, bool msix,
     }
 }
 
+static unsigned spapr_msi_get(sPAPRPHBState *phb, PCIDevice *pdev,
+                              unsigned *num)
+{
+    MSIMessage msg;
+    unsigned irq = 0;
+    uint8_t offs = (pci_bus_num(pdev->bus) << SPAPR_PCI_BUS_SHIFT) |
+        PCI_SLOT(pdev->devfn);
+
+    if ((phb->v1.msi[offs] & (1 << PCI_FUNC(pdev->devfn))) &&
+        (phb->v1.msix[offs] & (1 << PCI_FUNC(pdev->devfn)))) {
+        error_report("Both MSI and MSIX configured! MSIX will be used.");
+    }
+
+    if (phb->v1.msix[offs] & (1 << PCI_FUNC(pdev->devfn))) {
+        *num = pdev->msix_entries_nr;
+        if (*num) {
+            msg = msix_get_message(pdev, 0);
+            irq = msg.data;
+        }
+    } else if (phb->v1.msi[offs] & (1 << PCI_FUNC(pdev->devfn))) {
+        *num = msi_nr_vectors_allocated(pdev);
+        if (*num) {
+            msg = msi_get_message(pdev, 0);
+            irq = msg.data;
+        }
+    }
+
+    return irq;
+}
+
+/* Parser for PowerKVM 2.1.0 MSIX migration stream */
+static void spapr_pci_post_process_msi_v1(sPAPRPHBState *sphb)
+{
+    int i, fn;
+
+    if (!(sphb->v1.msi && sphb->v1.msix)) {
+        return;
+    }
+
+    for (i = 0; i < sizeof(sphb->v1.msi); ++i) {
+        for (fn = 0; fn < 8; ++fn) {
+            bool msi = !!(sphb->v1.msi[i] & (1 << fn));
+            bool msix = !!(sphb->v1.msix[i] & (1 << fn));
+            unsigned num = 0, first;
+            int bus_num = i / PCI_SLOT_MAX;
+            uint32_t cfg_addr = ((i << 3) | fn) << 8;
+            PCIDevice *pdev;
+
+            if (!msi && !msix) {
+                continue;
+            }
+
+            pdev = find_dev(spapr, sphb->buid, cfg_addr);
+            if (!pdev) {
+                error_report("MSI/MSIX is enable for missing device %d:%d.%d",
+                             bus_num, (i % PCI_SLOT_MAX) << 3, fn);
+                return;
+            }
+
+            first = spapr_msi_get(sphb, pdev, &num);
+            if (first) {
+                spapr_pci_msi rawval = { .first_irq = first, .num = num };
+                gpointer key = g_memdup(&cfg_addr, sizeof(cfg_addr));
+                gpointer value = g_memdup(&rawval, sizeof(rawval));
+                g_hash_table_insert(sphb->msi, key, value);
+
+                printf("MSI(X) %d:%d.%d  %d %d\n",
+                             bus_num, (i % PCI_SLOT_MAX) << 3, fn, first, num);
+            }
+        }
+    }
+    g_free(sphb->v1.msi);
+    g_free(sphb->v1.msix);
+    sphb->v1.msi = sphb->v1.msix = NULL;
+}
+
+static bool spapr_msi_v1_test(void *opaque, int version_id)
+{
+    return version_id == 1;
+}
+
 static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
                                 uint32_t token, uint32_t nargs,
                                 target_ulong args, uint32_t nret,
@@ -340,6 +421,7 @@ static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
         rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
         return;
     }
+    spapr_pci_post_process_msi_v1(phb);
 
     /* Releasing MSIs */
     if (!req_num) {
@@ -1428,6 +1510,8 @@ static void spapr_pci_pre_save(void *opaque)
     gpointer key, value;
     int i;
 
+    spapr_pci_post_process_msi_v1(sphb);
+
     if (sphb->msi_devs) {
         g_free(sphb->msi_devs);
         sphb->msi_devs = NULL;
@@ -1451,6 +1535,11 @@ static int spapr_pci_post_load(void *opaque, int version_id)
     gpointer key, value;
     int i;
 
+    if (version_id == 1) {
+        /* v1.msi/msix will have bitmaps after migration from PowerKVM 2.1.0 */
+        return 0;
+    }
+
     for (i = 0; i < sphb->msi_devs_num; ++i) {
         key = g_memdup(&sphb->msi_devs[i].key,
                        sizeof(sphb->msi_devs[i].key));
@@ -1470,7 +1559,7 @@ static int spapr_pci_post_load(void *opaque, int version_id)
 static const VMStateDescription vmstate_spapr_pci = {
     .name = "spapr_pci",
     .version_id = 2,
-    .minimum_version_id = 2,
+    .minimum_version_id = 1,
     .minimum_version_id_old = 1,
     .pre_save = spapr_pci_pre_save,
     .post_load = spapr_pci_post_load,
@@ -1483,8 +1572,16 @@ static const VMStateDescription vmstate_spapr_pci = {
         VMSTATE_UINT64_EQUAL(io_win_size, sPAPRPHBState),
         VMSTATE_STRUCT_ARRAY(lsi_table, sPAPRPHBState, PCI_NUM_PINS, 0,
                              vmstate_spapr_pci_lsi, struct spapr_pci_lsi),
-        VMSTATE_INT32(msi_devs_num, sPAPRPHBState),
-        VMSTATE_STRUCT_VARRAY_ALLOC(msi_devs, sPAPRPHBState, msi_devs_num, 0,
+        VMSTATE_ARRAY_TEST_ALLOC(v1.msi, sPAPRPHBState,
+                                 PCI_BUS_MAX * PCI_SLOT_MAX,
+                                 spapr_msi_v1_test, vmstate_info_uint8,
+                                 uint8_t),
+        VMSTATE_ARRAY_TEST_ALLOC(v1.msix, sPAPRPHBState,
+                                 PCI_BUS_MAX * PCI_SLOT_MAX,
+                                 spapr_msi_v1_test, vmstate_info_uint8,
+                                 uint8_t),
+        VMSTATE_INT32_V(msi_devs_num, sPAPRPHBState, 2),
+        VMSTATE_STRUCT_VARRAY_ALLOC(msi_devs, sPAPRPHBState, msi_devs_num, 2,
                                     vmstate_spapr_pci_msi, spapr_pci_msi_mig),
         VMSTATE_END_OF_LIST()
     },
