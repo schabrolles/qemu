@@ -43,6 +43,7 @@ struct sPAPRDrcEntry {
 
 typedef struct sPAPREnvironment {
     struct VIOsPAPRBus *vio_bus;
+    BusState *tce_bus;
     QLIST_HEAD(, sPAPRPHBState) phbs;
     hwaddr msi_win_addr;
     MemoryRegion msiwindow;
@@ -479,6 +480,9 @@ struct sPAPRTCETable {
     int fd;
     MemoryRegion iommu;
     QLIST_ENTRY(sPAPRTCETable) list;
+    struct {
+        uint32_t window_size;
+    } v1;
 };
 
 void spapr_events_init(sPAPREnvironment *spapr);
@@ -500,5 +504,11 @@ sPAPRDrcEntry *spapr_phb_to_drc_entry(uint64_t buid);
 sPAPRDrcEntry *spapr_find_drc_entry(int drc_index);
 void spapr_pci_hotplug_add_event(DeviceState *qdev, int slot);
 void spapr_pci_hotplug_remove_event(DeviceState *qdev, int slot);
+
+#define TYPE_SPAPR_TCE_BUS "spapr-tce-bus"
+#define SPAPR_TCE_BUS(obj) \
+    OBJECT_CHECK(BusState, (obj), TYPE_SPAPR_TCE_BUS)
+
+BusState *spapr_tce_bus_init(void);
 
 #endif /* !defined (__HW_SPAPR_H__) */
