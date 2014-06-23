@@ -550,6 +550,11 @@ static int vhost_virtqueue_set_addr(struct vhost_dev *dev,
         .log_guest_addr = vq->used_phys,
         .flags = enable_log ? (1 << VHOST_VRING_F_LOG) : 0,
     };
+
+    if (virtio_get_byteswap()) {
+        addr.flags |= (1 << VHOST_VRING_F_BYTESWAP);
+    }
+
     int r = ioctl(dev->control, VHOST_SET_VRING_ADDR, &addr);
     if (r < 0) {
         return -errno;
