@@ -529,6 +529,15 @@ static void vhost_region_nop(MemoryListener *listener,
 {
 }
 
+static bool virtio_get_byteswap(void)
+{
+#ifdef TARGET_WORDS_BIGENDIAN
+    return !system_is_big_endian();
+#else
+    return system_is_big_endian();
+#endif
+}
+
 static int vhost_virtqueue_set_addr(struct vhost_dev *dev,
                                     struct vhost_virtqueue *vq,
                                     unsigned idx, bool enable_log)
