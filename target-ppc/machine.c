@@ -501,7 +501,7 @@ static const VMStateDescription vmstate_tlbmas = {
 
 const VMStateDescription vmstate_ppc_cpu = {
     .name = "cpu",
-    .version_id = 5,
+    .version_id = 6,
     .minimum_version_id = 5,
     .minimum_version_id_old = 4,
     .load_state_old = cpu_load_old,
@@ -533,10 +533,10 @@ const VMStateDescription vmstate_ppc_cpu = {
         /* FIXME: access_type? */
 
         /* Sanity checking */
-        VMSTATE_UINTTL_EQUAL(env.msr_mask, PowerPCCPU),
-        VMSTATE_UINT64_EQUAL(env.insns_flags, PowerPCCPU),
-        VMSTATE_UINT64_EQUAL(env.insns_flags2, PowerPCCPU),
-        VMSTATE_UINT32_EQUAL(env.nb_BATs, PowerPCCPU),
+        VMSTATE_UINTTL(env.msr_mask, PowerPCCPU),
+        VMSTATE_UINT64(env.insns_flags, PowerPCCPU),
+        VMSTATE_UINT64(env.insns_flags2, PowerPCCPU),
+        VMSTATE_UINT32(env.nb_BATs, PowerPCCPU),
         VMSTATE_END_OF_LIST()
     },
     .subsections = (VMStateSubsection []) {
