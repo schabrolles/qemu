@@ -427,6 +427,7 @@ int spapr_allocate_irq_block(int num, bool lsi, bool msi);
 
 /* RTAS ibm,get-system-parameter token values */
 #define RTAS_SYSPARM_DIAGNOSTICS_RUN_MODE        42
+#define RTAS_SYSPARM_UUID                        48
 
 /* Possible values for the platform-processor-diagnostics-run-mode parameter
  * of the RTAS ibm,get-system-parameter call.
