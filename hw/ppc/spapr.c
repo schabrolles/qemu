@@ -430,7 +430,7 @@ static void spapr_create_drc_dt_entries(void *fdt)
 
 static hwaddr spapr_node0_size(void)
 {
-    if (nb_numa_nodes > 1) {
+    if (nb_numa_nodes) {
         int i;
         for (i = 0; i < nb_numa_nodes; ++i) {
             if (node_mem[i]) {
