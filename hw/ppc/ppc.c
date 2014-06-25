@@ -894,6 +894,18 @@ static int timebase_post_load(void *opaque, int version_id)
     return 0;
 }
 
+const VMStateDescription vmstate_ppc_timebase_v2 = {
+    .name = "timebase",
+    .pre_save = timebase_pre_save,
+    .post_load = timebase_post_load,
+    .fields      = (VMStateField []) {
+        VMSTATE_UNUSED(sizeof(uint32_t)), /* Used to be tb_freq */
+        VMSTATE_UINT64(guest_timebase, PPCTimebase),
+        VMSTATE_INT64(time_of_the_day_ns, PPCTimebase),
+        VMSTATE_END_OF_LIST()
+    },
+};
+
 const VMStateDescription vmstate_ppc_timebase = {
     .name = "timebase",
     .version_id = 1,

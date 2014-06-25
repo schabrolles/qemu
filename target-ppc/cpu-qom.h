@@ -132,7 +132,17 @@ typedef struct PPCTimebase {
     int64_t time_of_the_day_ns;
 } PPCTimebase;
 
+extern const struct VMStateDescription vmstate_ppc_timebase_v2;
 extern const struct VMStateDescription vmstate_ppc_timebase;
+
+#define VMSTATE_PPC_TIMEBASE_COMPAT_V(_field, _state, _vmsd, _test) { \
+    .name       = (stringify(_field)),                                \
+    .field_exists = (_test),                                          \
+    .size       = sizeof(PPCTimebase),                                \
+    .vmsd       = &_vmsd,                                             \
+    .flags      = VMS_STRUCT,                                         \
+    .offset     = vmstate_offset_value(_state, _field, PPCTimebase),  \
+}
 
 #define VMSTATE_PPC_TIMEBASE_V(_field, _state, _version) {            \
     .name       = (stringify(_field)),                                \

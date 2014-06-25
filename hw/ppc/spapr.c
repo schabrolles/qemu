@@ -1067,17 +1067,24 @@ static int spapr_vga_init(PCIBus *pci_bus)
     }
 }
 
+static bool spapr_v2_test(void *opaque, int version_id)
+{
+    return version_id == 2;
+}
+
 static const VMStateDescription vmstate_spapr = {
     .name = "spapr",
-    .version_id = 2,
+    .version_id = 3,
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
     .fields      = (VMStateField []) {
-        VMSTATE_UNUSED(4), /* used to be @next_irq */
+        VMSTATE_UNUSED_TEST(spapr_v2_test, 4), /* used to be @next_irq */
 
         /* RTC offset */
         VMSTATE_UINT64(rtc_offset, sPAPREnvironment),
-        VMSTATE_PPC_TIMEBASE_V(tb, sPAPREnvironment, 2),
+        VMSTATE_PPC_TIMEBASE_COMPAT_V(tb, sPAPREnvironment,
+                                      vmstate_ppc_timebase_v2, spapr_v2_test),
+        VMSTATE_PPC_TIMEBASE_V(tb, sPAPREnvironment, 3),
         VMSTATE_END_OF_LIST()
     },
 };
