@@ -4265,6 +4265,10 @@ int vfio_container_ioctl(AddressSpace *as, int32_t groupid,
     case VFIO_CHECK_EXTENSION:
     case VFIO_IOMMU_SPAPR_TCE_GET_INFO:
     case VFIO_EEH_PE_OP:
+    case VFIO_IOMMU_SPAPR_TCE_QUERY:
+    case VFIO_IOMMU_SPAPR_TCE_CREATE:
+    case VFIO_IOMMU_SPAPR_TCE_REMOVE:
+    case VFIO_IOMMU_SPAPR_TCE_RESET:
         break;
     default:
         /* Return an error on unknown requests */
