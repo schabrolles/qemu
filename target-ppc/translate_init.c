@@ -8049,6 +8049,17 @@ static void init_proc_POWER7 (CPUPPCState *env)
     init_proc_book3s_64(env, BOOK3S_CPU_POWER7);
 }
 
+static bool ppc_pvr_match_power7(PowerPCCPUClass *pcc, uint32_t pvr)
+{
+    if ((pvr & CPU_POWERPC_POWER_SERVER_MASK) == CPU_POWERPC_POWER7P_BASE) {
+        return true;
+    }
+    if ((pvr & CPU_POWERPC_POWER_SERVER_MASK) == CPU_POWERPC_POWER7_BASE) {
+        return true;
+    }
+    return false;
+}
+
 POWERPC_FAMILY(POWER7)(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
@@ -8057,8 +8068,7 @@ POWERPC_FAMILY(POWER7)(ObjectClass *oc, void *data)
     dc->fw_name = "PowerPC,POWER7";
     dc->desc = "POWER7";
     dc->props = powerpc_servercpu_properties;
-    pcc->pvr = CPU_POWERPC_POWER7_BASE;
-    pcc->pvr_mask = CPU_POWERPC_POWER7_MASK;
+    pcc->pvr_match = ppc_pvr_match_power7;
     pcc->pcr_mask = PCR_COMPAT_2_05 | PCR_COMPAT_2_06;
     pcc->init_proc = init_proc_POWER7;
     pcc->check_pow = check_pow_nocheck;
@@ -8118,8 +8128,7 @@ POWERPC_FAMILY(POWER7P)(ObjectClass *oc, void *data)
     dc->fw_name = "PowerPC,POWER7+";
     dc->desc = "POWER7+";
     dc->props = powerpc_servercpu_properties;
-    pcc->pvr = CPU_POWERPC_POWER7P_BASE;
-    pcc->pvr_mask = CPU_POWERPC_POWER7P_MASK;
+    pcc->pvr_match = ppc_pvr_match_power7;
     pcc->pcr_mask = PCR_COMPAT_2_05 | PCR_COMPAT_2_06;
     pcc->init_proc = init_proc_POWER7;
     pcc->check_pow = check_pow_nocheck;
@@ -8176,6 +8185,17 @@ static void init_proc_POWER8(CPUPPCState *env)
     init_proc_book3s_64(env, BOOK3S_CPU_POWER8);
 }
 
+static bool ppc_pvr_match_power8(PowerPCCPUClass *pcc, uint32_t pvr)
+{
+    if ((pvr & CPU_POWERPC_POWER_SERVER_MASK) == CPU_POWERPC_POWER8E_BASE) {
+        return true;
+    }
+    if ((pvr & CPU_POWERPC_POWER_SERVER_MASK) == CPU_POWERPC_POWER8_BASE) {
+        return true;
+    }
+    return false;
+}
+
 POWERPC_FAMILY(POWER8E)(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
@@ -8184,8 +8204,7 @@ POWERPC_FAMILY(POWER8E)(ObjectClass *oc, void *data)
     dc->fw_name = "PowerPC,POWER8";
     dc->desc = "POWER8E";
     dc->props = powerpc_servercpu_properties;
-    pcc->pvr = CPU_POWERPC_POWER8E_BASE;
-    pcc->pvr_mask = CPU_POWERPC_POWER8E_MASK;
+    pcc->pvr_match = ppc_pvr_match_power8;
     pcc->pcr_mask = PCR_COMPAT_2_05 | PCR_COMPAT_2_06;
     pcc->init_proc = init_proc_POWER8;
     pcc->check_pow = check_pow_nocheck;
@@ -8243,13 +8262,10 @@ POWERPC_FAMILY(POWER8E)(ObjectClass *oc, void *data)
 POWERPC_FAMILY(POWER8)(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
-    PowerPCCPUClass *pcc = POWERPC_CPU_CLASS(oc);
 
     ppc_POWER8E_cpu_family_class_init(oc, data);
 
     dc->desc = "POWER8";
-    pcc->pvr = CPU_POWERPC_POWER8_BASE;
-    pcc->pvr_mask = CPU_POWERPC_POWER8_MASK;
 }
 #endif /* defined (TARGET_PPC64) */
 
@@ -9232,7 +9248,6 @@ static gint ppc_cpu_compare_class_pvr_mask(gconstpointer a, gconstpointer b)
     ObjectClass *oc = (ObjectClass *)a;
     uint32_t pvr = *(uint32_t *)b;
     PowerPCCPUClass *pcc = (PowerPCCPUClass *)a;
-    gint ret;
 
     /* -cpu host does a PVR lookup during construction */
     if (unlikely(strcmp(object_class_get_name(oc),
@@ -9244,9 +9259,11 @@ static gint ppc_cpu_compare_class_pvr_mask(gconstpointer a, gconstpointer b)
         return -1;
     }
 
-    ret = (((pcc->pvr & pcc->pvr_mask) == (pvr & pcc->pvr_mask)) ? 0 : -1);
+    if (pcc->pvr_match && pcc->pvr_match(pcc, pvr)) {
+        return 0;
+    }
 
-    return ret;
+    return -1;
 }
 
 PowerPCCPUClass *ppc_cpu_class_by_pvr_mask(uint32_t pvr)
@@ -9642,6 +9659,11 @@ static void ppc_cpu_initfn(Object *obj)
     }
 }
 
+static bool ppc_pvr_match_default(PowerPCCPUClass *pcc, uint32_t pvr)
+{
+    return pcc->pvr == pvr;
+}
+
 static void ppc_cpu_class_init(ObjectClass *oc, void *data)
 {
     PowerPCCPUClass *pcc = POWERPC_CPU_CLASS(oc);
@@ -9649,8 +9671,7 @@ static void ppc_cpu_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     pcc->parent_realize = dc->realize;
-    pcc->pvr = CPU_POWERPC_DEFAULT_MASK;
-    pcc->pvr_mask = CPU_POWERPC_DEFAULT_MASK;
+    pcc->pvr_match = ppc_pvr_match_default;
     pcc->interrupts_big_endian = ppc_cpu_interrupts_big_endian_always;
     dc->realize = ppc_cpu_realizefn;
     dc->unrealize = ppc_cpu_unrealizefn;
