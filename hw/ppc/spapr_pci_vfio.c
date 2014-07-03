@@ -71,6 +71,61 @@ static void spapr_phb_vfio_finish_realize(sPAPRPHBState *sphb, Error **errp)
                                 spapr_tce_get_iommu(tcet));
 }
 
+static int spapr_phb_vfio_eeh_handler(sPAPRPHBState *sphb, int req, int opt)
+{
+    sPAPRPHBVFIOState *svphb = SPAPR_PCI_VFIO_HOST_BRIDGE(sphb);
+    struct vfio_eeh_pe_op op = { .argsz = sizeof(op) };
+    int cmd;
+
+    switch (req) {
+    case RTAS_EEH_REQ_SET_OPTION:
+        switch (opt) {
+        case RTAS_EEH_DISABLE:
+            cmd = VFIO_EEH_PE_DISABLE;
+            break;
+        case RTAS_EEH_ENABLE:
+            cmd = VFIO_EEH_PE_ENABLE;
+            break;
+        case RTAS_EEH_THAW_IO:
+            cmd = VFIO_EEH_PE_UNFREEZE_IO;
+            break;
+        case RTAS_EEH_THAW_DMA:
+            cmd = VFIO_EEH_PE_UNFREEZE_DMA;
+            break;
+        default:
+            return -EINVAL;
+        }
+        break;
+    case RTAS_EEH_REQ_GET_STATE:
+        cmd = VFIO_EEH_PE_GET_STATE;
+        break;
+    case RTAS_EEH_REQ_RESET:
+        switch (opt) {
+        case RTAS_SLOT_RESET_DEACTIVATE:
+            cmd = VFIO_EEH_PE_RESET_DEACTIVATE;
+            break;
+        case RTAS_SLOT_RESET_HOT:
+            cmd = VFIO_EEH_PE_RESET_HOT;
+            break;
+        case RTAS_SLOT_RESET_FUNDAMENTAL:
+            cmd = VFIO_EEH_PE_RESET_FUNDAMENTAL;
+            break;
+        default:
+            return -EINVAL;
+        }
+        break;
+    case RTAS_EEH_REQ_CONFIGURE:
+        cmd = VFIO_EEH_PE_CONFIGURE;
+        break;
+    default:
+         return -EINVAL;
+    }
+
+    op.op = cmd;
+    return vfio_container_ioctl(&svphb->phb.iommu_as, svphb->iommugroupid,
+                                VFIO_EEH_PE_OP, &op);
+}
+
 static void spapr_phb_vfio_reset(DeviceState *qdev)
 {
     /* Do nothing */
@@ -84,6 +139,7 @@ static void spapr_phb_vfio_class_init(ObjectClass *klass, void *data)
     dc->props = spapr_phb_vfio_properties;
     dc->reset = spapr_phb_vfio_reset;
     spc->finish_realize = spapr_phb_vfio_finish_realize;
+    spc->eeh_handler = spapr_phb_vfio_eeh_handler;
 }
 
 static const TypeInfo spapr_phb_vfio_info = {
