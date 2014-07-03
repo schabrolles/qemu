@@ -98,7 +98,7 @@
 
 static void spapr_drc_state_reset(sPAPRDrcEntry *drc_entry);
 
-static sPAPRPHBState *find_phb(sPAPREnvironment *spapr, uint64_t buid)
+sPAPRPHBState *spapr_pci_find_phb(sPAPREnvironment *spapr, uint64_t buid)
 {
     sPAPRPHBState *sphb;
 
@@ -112,10 +112,10 @@ static sPAPRPHBState *find_phb(sPAPREnvironment *spapr, uint64_t buid)
     return NULL;
 }
 
-static PCIDevice *find_dev(sPAPREnvironment *spapr, uint64_t buid,
-                           uint32_t config_addr)
+PCIDevice *spapr_pci_find_dev(sPAPREnvironment *spapr, uint64_t buid,
+                              uint32_t config_addr)
 {
-    sPAPRPHBState *sphb = find_phb(spapr, buid);
+    sPAPRPHBState *sphb = spapr_pci_find_phb(spapr, buid);
     PCIHostState *phb = PCI_HOST_BRIDGE(sphb);
     int bus_num = (config_addr >> 16) & 0xFF;
     int devfn = (config_addr >> 8) & 0xFF;
@@ -146,7 +146,7 @@ static void finish_read_pci_config(sPAPREnvironment *spapr, uint64_t buid,
         return;
     }
 
-    pci_dev = find_dev(spapr, buid, addr);
+    pci_dev = spapr_pci_find_dev(spapr, buid, addr);
     addr = rtas_pci_cfgaddr(addr);
 
     if (!pci_dev || (addr % size) || (addr >= pci_config_size(pci_dev))) {
@@ -213,7 +213,7 @@ static void finish_write_pci_config(sPAPREnvironment *spapr, uint64_t buid,
         return;
     }
 
-    pci_dev = find_dev(spapr, buid, addr);
+    pci_dev = spapr_pci_find_dev(spapr, buid, addr);
     addr = rtas_pci_cfgaddr(addr);
 
     if (!pci_dev || (addr % size) || (addr >= pci_config_size(pci_dev))) {
@@ -351,7 +351,7 @@ static void spapr_pci_post_process_msi_v1(sPAPRPHBState *sphb)
                 continue;
             }
 
-            pdev = find_dev(spapr, sphb->buid, cfg_addr);
+            pdev = spapr_pci_find_dev(spapr, sphb->buid, cfg_addr);
             if (!pdev) {
                 error_report("MSI/MSIX is enable for missing device %d:%d.%d",
                              bus_num, (i % PCI_SLOT_MAX) << 3, fn);
@@ -413,9 +413,9 @@ static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     }
 
     /* Fins sPAPRPHBState */
-    phb = find_phb(spapr, buid);
+    phb = spapr_pci_find_phb(spapr, buid);
     if (phb) {
-        pdev = find_dev(spapr, buid, config_addr);
+        pdev = spapr_pci_find_dev(spapr, buid, config_addr);
     }
     if (!phb || !pdev) {
         rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
@@ -510,9 +510,9 @@ static void rtas_ibm_query_interrupt_source_number(PowerPCCPU *cpu,
     spapr_pci_msi *msi;
 
     /* Find sPAPRPHBState */
-    phb = find_phb(spapr, buid);
+    phb = spapr_pci_find_phb(spapr, buid);
     if (phb) {
-        pdev = find_dev(spapr, buid, config_addr);
+        pdev = spapr_pci_find_dev(spapr, buid, config_addr);
     }
     if (!phb || !pdev) {
         rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
@@ -1331,7 +1331,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         return;
     }
 
-    if (find_phb(spapr, sphb->buid)) {
+    if (spapr_pci_find_phb(spapr, sphb->buid)) {
         error_setg(errp, "PCI host bridges must have unique BUIDs");
         return;
     }
