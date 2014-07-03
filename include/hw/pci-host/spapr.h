@@ -49,6 +49,7 @@ struct sPAPRPHBClass {
     PCIHostBridgeClass parent_class;
 
     void (*finish_realize)(sPAPRPHBState *sphb, Error **errp);
+    int (*eeh_handler)(sPAPRPHBState *sphb, int req, int opt);
 };
 
 typedef struct spapr_pci_msi {
@@ -114,6 +115,12 @@ struct sPAPRPHBVFIOState {
 #define SPAPR_PCI_MSI_WINDOW         0x40000000000ULL
 
 #define SPAPR_PCI_MEM_WIN_BUS_OFFSET 0x80000000ULL
+
+/* EEH related requests */
+#define RTAS_EEH_REQ_SET_OPTION      0
+#define RTAS_EEH_REQ_GET_STATE       1
+#define RTAS_EEH_REQ_RESET           2
+#define RTAS_EEH_REQ_CONFIGURE       3
 
 static inline qemu_irq spapr_phb_lsi_qirq(struct sPAPRPHBState *phb, int pin)
 {

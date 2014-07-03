@@ -824,6 +824,233 @@ error_exit:
     rtas_st(rets, 0, rc);
 }
 
+static int rtas_handle_eeh_request(sPAPREnvironment *spapr,
+                                   uint64_t buid, uint32_t req, uint32_t opt)
+{
+    sPAPRPHBState *sphb = spapr_pci_find_phb(spapr, buid);
+    sPAPRPHBClass *info = SPAPR_PCI_HOST_BRIDGE_GET_CLASS(sphb);
+
+    if (!sphb || !info->eeh_handler) {
+        return -ENOENT;
+    }
+
+    return info->eeh_handler(sphb, req, opt);
+}
+
+static void rtas_ibm_set_eeh_option(PowerPCCPU *cpu,
+                                    sPAPREnvironment *spapr,
+                                    uint32_t token, uint32_t nargs,
+                                    target_ulong args, uint32_t nret,
+                                    target_ulong rets)
+{
+    uint32_t addr, option;
+    uint64_t buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
+    int ret;
+
+    if ((nargs != 4) || (nret != 1)) {
+        goto param_error_exit;
+    }
+
+    addr = rtas_ld(args, 0);
+    option = rtas_ld(args, 3);
+    switch (option) {
+    case RTAS_EEH_ENABLE:
+        if (!spapr_pci_find_dev(spapr, buid, addr)) {
+            goto param_error_exit;
+        }
+        break;
+    case RTAS_EEH_DISABLE:
+    case RTAS_EEH_THAW_IO:
+    case RTAS_EEH_THAW_DMA:
+        break;
+    default:
+        goto param_error_exit;
+    }
+
+    ret = rtas_handle_eeh_request(spapr, buid,
+                                  RTAS_EEH_REQ_SET_OPTION, option);
+    if (ret >= 0) {
+        rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+        return;
+    }
+
+param_error_exit:
+    rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+}
+
+static void rtas_ibm_get_config_addr_info2(PowerPCCPU *cpu,
+                                           sPAPREnvironment *spapr,
+                                           uint32_t token, uint32_t nargs,
+                                           target_ulong args, uint32_t nret,
+                                           target_ulong rets)
+{
+    uint32_t addr, option;
+    uint64_t buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
+    sPAPRPHBState *sphb = spapr_pci_find_phb(spapr, buid);
+    sPAPRPHBClass *info = SPAPR_PCI_HOST_BRIDGE_GET_CLASS(sphb);
+    PCIDevice *pdev;
+
+    if (!sphb || !info->eeh_handler) {
+        goto param_error_exit;
+    }
+
+    if ((nargs != 4) || (nret != 2)) {
+        goto param_error_exit;
+    }
+
+    addr = rtas_ld(args, 0);
+    option = rtas_ld(args, 3);
+    if (option != RTAS_GET_PE_ADDR && option != RTAS_GET_PE_MODE) {
+        goto param_error_exit;
+    }
+
+    pdev = spapr_pci_find_dev(spapr, buid, addr);
+    if (!pdev) {
+        goto param_error_exit;
+    }
+
+    /*
+     * For now, we always have bus level PE whose address
+     * has format "00BBSS00". The guest OS might regard
+     * PE address 0 as invalid. We avoid that simply by
+     * extending it with one.
+     */
+    rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+    if (option == RTAS_GET_PE_ADDR) {
+        rtas_st(rets, 1, (pci_bus_num(pdev->bus) << 16) + 1);
+    } else {
+        rtas_st(rets, 1, RTAS_PE_MODE_SHARED);
+    }
+
+    return;
+
+param_error_exit:
+    rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+}
+
+static void rtas_ibm_read_slot_reset_state2(PowerPCCPU *cpu,
+                                            sPAPREnvironment *spapr,
+                                            uint32_t token, uint32_t nargs,
+                                            target_ulong args, uint32_t nret,
+                                            target_ulong rets)
+{
+    uint64_t buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
+    int ret;
+
+    if ((nargs != 3) || (nret != 4 && nret != 5)) {
+        goto param_error_exit;
+    }
+
+    ret = rtas_handle_eeh_request(spapr, buid, RTAS_EEH_REQ_GET_STATE, 0);
+    if (ret >= 0) {
+        rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+        rtas_st(rets, 1, ret);
+        rtas_st(rets, 2, RTAS_EEH_SUPPORT);
+        rtas_st(rets, 3, RTAS_EEH_PE_UNAVAIL_INFO);
+        if (nret >= 5) {
+            rtas_st(rets, 4, RTAS_EEH_PE_RECOVER_INFO);
+        }
+
+        return;
+    }
+
+param_error_exit:
+    rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+}
+
+static void rtas_ibm_set_slot_reset(PowerPCCPU *cpu,
+                                    sPAPREnvironment *spapr,
+                                    uint32_t token, uint32_t nargs,
+                                    target_ulong args, uint32_t nret,
+                                    target_ulong rets)
+{
+    uint32_t option;
+    uint64_t buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
+    int ret;
+
+    if ((nargs != 4) || (nret != 1)) {
+        goto param_error_exit;
+    }
+
+    option = rtas_ld(args, 3);
+    switch (option) {
+    case RTAS_SLOT_RESET_DEACTIVATE:
+    case RTAS_SLOT_RESET_HOT:
+    case RTAS_SLOT_RESET_FUNDAMENTAL:
+        break;
+    default:
+        goto param_error_exit;
+    }
+
+    ret = rtas_handle_eeh_request(spapr, buid, RTAS_EEH_REQ_RESET, option);
+    if (ret >= 0) {
+        rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+        return;
+    }
+
+param_error_exit:
+    rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+}
+
+static void rtas_ibm_configure_pe(PowerPCCPU *cpu,
+                                  sPAPREnvironment *spapr,
+                                  uint32_t token, uint32_t nargs,
+                                  target_ulong args, uint32_t nret,
+                                  target_ulong rets)
+{
+    uint64_t buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
+    int ret;
+
+    if ((nargs != 3) || (nret != 1)) {
+        goto param_error_exit;
+    }
+
+    ret = rtas_handle_eeh_request(spapr, buid, RTAS_EEH_REQ_CONFIGURE, 0);
+    if (ret >= 0) {
+        rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+        return;
+    }
+
+param_error_exit:
+    rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+}
+
+/* To support it later */
+static void rtas_ibm_slot_error_detail(PowerPCCPU *cpu,
+                                       sPAPREnvironment *spapr,
+                                       uint32_t token, uint32_t nargs,
+                                       target_ulong args, uint32_t nret,
+                                       target_ulong rets)
+{
+    int option;
+    uint64_t buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
+    sPAPRPHBState *sphb = spapr_pci_find_phb(spapr, buid);
+    sPAPRPHBClass *info = SPAPR_PCI_HOST_BRIDGE_GET_CLASS(sphb);
+
+    if (!sphb || !info->eeh_handler) {
+        goto param_error_exit;
+    }
+
+    if ((nargs != 8) || (nret != 1)) {
+        goto param_error_exit;
+    }
+
+    option = rtas_ld(args, 7);
+    switch (option) {
+    case RTAS_SLOT_TEMP_ERR_LOG:
+    case RTAS_SLOT_PERM_ERR_LOG:
+        break;
+    default:
+        goto param_error_exit;
+    }
+
+    rtas_st(rets, 0, RTAS_OUT_NO_ERRORS_FOUND);
+    return;
+
+param_error_exit:
+    rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+}
+
 static int pci_spapr_swizzle(int slot, int pin)
 {
     return (slot + pin) % PCI_NUM_PINS;
@@ -1878,6 +2105,25 @@ void spapr_pci_rtas_init(void)
                         rtas_get_sensor_state);
     spapr_rtas_register(RTAS_IBM_CONFIGURE_CONNECTOR, "ibm,configure-connector",
                         rtas_ibm_configure_connector);
+
+    spapr_rtas_register(RTAS_IBM_SET_EEH_OPTION,
+                        "ibm,set-eeh-option",
+                        rtas_ibm_set_eeh_option);
+    spapr_rtas_register(RTAS_IBM_GET_CONFIG_ADDR_INFO2,
+                        "ibm,get-config-addr-info2",
+                        rtas_ibm_get_config_addr_info2);
+    spapr_rtas_register(RTAS_IBM_READ_SLOT_RESET_STATE2,
+                        "ibm,read-slot-reset-state2",
+                        rtas_ibm_read_slot_reset_state2);
+    spapr_rtas_register(RTAS_IBM_SET_SLOT_RESET,
+                        "ibm,set-slot-reset",
+                        rtas_ibm_set_slot_reset);
+    spapr_rtas_register(RTAS_IBM_CONFIGURE_PE,
+                        "ibm,configure-pe",
+                        rtas_ibm_configure_pe);
+    spapr_rtas_register(RTAS_IBM_SLOT_ERROR_DETAIL,
+                        "ibm,slot-error-detail",
+                        rtas_ibm_slot_error_detail);
 }
 
 static void spapr_pci_register_types(void)
