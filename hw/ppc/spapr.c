@@ -679,6 +679,15 @@ static void *spapr_create_fdt_skel(hwaddr initrd_base,
     _FDT((fdt_property_cell(fdt, "rtas-error-log-max", RTAS_ERROR_LOG_MAX)));
     _FDT((fdt_property_cell(fdt, "rtas-event-scan-rate", RTAS_EVENT_SCAN_RATE)));
 
+    /*
+     * According to PAPR, rtas ibm,os-term, does not gaurantee a return
+     * back to the guest cpu.
+     *
+     * While an additional ibm,extended-os-term property indicates that
+     * rtas call return will always occur. Set this property.
+     */
+    _FDT((fdt_property(fdt, "ibm,extended-os-term", NULL, 0)));
+
     _FDT((fdt_end_node(fdt)));
 
     /* interrupt controller */
