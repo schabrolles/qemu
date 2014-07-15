@@ -22,6 +22,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "sysemu/sysemu.h"
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/msi.h"
@@ -1673,6 +1674,8 @@ static void spapr_phb_finish_realize(sPAPRPHBState *sphb, Error **errp)
     /* Register default 32bit DMA window */
     memory_region_add_subregion(&sphb->iommu_root, 0,
                                 spapr_tce_get_iommu(tcet));
+
+    sphb->ddw_supported = true;
 }
 
 static int spapr_phb_children_reset(Object *child, void *opaque)
@@ -1822,6 +1825,42 @@ static const char *spapr_phb_root_bus_path(PCIHostState *host_bridge,
     return sphb->dtbusname;
 }
 
+static int spapr_pci_ddw_query(sPAPRPHBState *sphb,
+                               uint32_t *windows_available,
+                               uint32_t *page_size_mask)
+{
+    *windows_available = 1;
+    *page_size_mask = DDW_PGSIZE_16M;
+
+    return 0;
+}
+
+static int spapr_pci_ddw_create(sPAPRPHBState *sphb, uint32_t page_shift,
+                                uint32_t window_shift, uint32_t liobn,
+                                sPAPRTCETable **ptcet)
+{
+    *ptcet = spapr_tce_new_table(DEVICE(sphb), liobn, SPAPR_PCI_TCE64_START,
+                                 page_shift, 1 << (window_shift - page_shift),
+                                 true);
+    if (!*ptcet) {
+        return -1;
+    }
+    memory_region_add_subregion(&sphb->iommu_root, (*ptcet)->bus_offset,
+                                spapr_tce_get_iommu(*ptcet));
+
+    return 0;
+}
+
+static int spapr_pci_ddw_remove(sPAPRPHBState *sphb, sPAPRTCETable *tcet)
+{
+    return 0;
+}
+
+static int spapr_pci_ddw_reset(sPAPRPHBState *sphb)
+{
+    return 0;
+}
+
 static void spapr_phb_class_init(ObjectClass *klass, void *data)
 {
     PCIHostBridgeClass *hc = PCI_HOST_BRIDGE_CLASS(klass);
@@ -1839,6 +1878,10 @@ static void spapr_phb_class_init(ObjectClass *klass, void *data)
     spc->finish_realize = spapr_phb_finish_realize;
     hp->plug = spapr_phb_hot_plug;
     hp->unplug = spapr_phb_hot_unplug;
+    spc->ddw_query = spapr_pci_ddw_query;
+    spc->ddw_create = spapr_pci_ddw_create;
+    spc->ddw_remove = spapr_pci_ddw_remove;
+    spc->ddw_reset = spapr_pci_ddw_reset;
 }
 
 static const TypeInfo spapr_phb_info = {
@@ -2022,6 +2065,14 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     uint32_t interrupt_map_mask[] = {
         cpu_to_be32(b_ddddd(-1)|b_fff(0)), 0x0, 0x0, cpu_to_be32(-1)};
     uint32_t interrupt_map[PCI_SLOT_MAX * PCI_NUM_PINS][7];
+    uint32_t ddw_applicable[] = {
+        RTAS_IBM_QUERY_PE_DMA_WINDOW,
+        RTAS_IBM_CREATE_PE_DMA_WINDOW,
+        RTAS_IBM_REMOVE_PE_DMA_WINDOW
+    };
+    uint32_t ddw_extensions[] = { 1, RTAS_IBM_RESET_PE_DMA_WINDOW };
+    sPAPRPHBClass *spc = SPAPR_PCI_HOST_BRIDGE_GET_CLASS(phb);
+    QemuOpts *machine_opts = qemu_get_machine_opts();
 
     /* Start populating the FDT */
     sprintf(nodename, "pci@%" PRIx64, phb->buid);
@@ -2042,6 +2093,20 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     _FDT(fdt_setprop(fdt, bus_off, "reg", &bus_reg, sizeof(bus_reg)));
     _FDT(fdt_setprop_cell(fdt, bus_off, "ibm,pci-config-space-type", 0x1));
     _FDT(fdt_setprop_cell(fdt, bus_off, "ibm,pe-total-#msi", XICS_IRQS));
+
+    /* Dynamic DMA window */
+    if (qemu_opt_get_bool(machine_opts, "ddw", true) &&
+        phb->ddw_supported &&
+        spc->ddw_query && spc->ddw_create && spc->ddw_remove) {
+        _FDT(fdt_setprop(fdt, bus_off, "ibm,ddw-applicable", &ddw_applicable,
+                         sizeof(ddw_applicable)));
+
+        if (spc->ddw_reset) {
+            /* When enabled, the guest will remove the default 32bit window */
+            _FDT(fdt_setprop(fdt, bus_off, "ibm,ddw-extensions",
+                             &ddw_extensions, sizeof(ddw_extensions)));
+        }
+    }
 
     /* Build the interrupt-map, this must matches what is done
      * in pci_spapr_map_irq
