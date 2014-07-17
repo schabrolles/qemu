@@ -476,7 +476,6 @@ static void *spapr_create_fdt_skel(hwaddr initrd_base,
     QemuOpts *opts = qemu_opts_find(qemu_find_opts("smp-opts"), NULL);
     unsigned sockets = opts ? qemu_opt_get_number(opts, "sockets", 0) : 0;
     uint32_t cpus_per_socket = sockets ? (smp_cpus / sockets) : 1;
-    char char_buf[512];
 
     add_str(hypertas, "hcall-pft");
     add_str(hypertas, "hcall-term");
@@ -505,24 +504,6 @@ static void *spapr_create_fdt_skel(hwaddr initrd_base,
     _FDT((fdt_property_string(fdt, "device_type", "chrp")));
     _FDT((fdt_property_string(fdt, "model", "IBM pSeries (emulated by qemu)")));
     _FDT((fdt_property_string(fdt, "compatible", "qemu,pseries")));
-
-    if (kvm_enabled()) {
-        _FDT((fdt_property_string(fdt, "hypervisor", "kvm")));
-    }
-
-    /*
-     * Add info to guest to indentify which host is it being run on
-     * and what is the uuid of the guest
-     */
-    memset(char_buf, 0, sizeof(char_buf));
-    if (!kvmppc_get_host_model(char_buf, sizeof(char_buf))) {
-        _FDT((fdt_property_string(fdt, "host-model", char_buf)));
-        memset(char_buf, 0, sizeof(char_buf));
-    }
-    if (!kvmppc_get_host_serial(char_buf, sizeof(char_buf))) {
-        _FDT((fdt_property_string(fdt, "host-serial", char_buf)));
-    }
-    _FDT((fdt_property(fdt, "vm,uuid", qemu_uuid, 16)));
 
     _FDT((fdt_property_cell(fdt, "#address-cells", 0x2)));
     _FDT((fdt_property_cell(fdt, "#size-cells", 0x2)));
