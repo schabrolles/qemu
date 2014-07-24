@@ -101,6 +101,7 @@ struct sPAPRPHBVFIOState {
     sPAPRPHBState phb;
 
     int32_t iommugroupid;
+    bool scan;
 };
 
 #define SPAPR_PCI_BASE_BUID          0x800000020000000ULL
