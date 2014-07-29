@@ -4289,6 +4289,7 @@ int main(int argc, char **argv, char **envp)
 
     if (nb_numa_nodes > 0) {
         int i;
+        uint64_t numa_total;
 
         if (nb_numa_nodes > MAX_NODES) {
             nb_numa_nodes = MAX_NODES;
@@ -4312,6 +4313,18 @@ int main(int argc, char **argv, char **envp)
                 usedmem += node_mem[i];
             }
             node_mem[i] = ram_size - usedmem;
+        }
+
+        numa_total = 0;
+        for (i = 0; i < nb_numa_nodes; i++) {
+            numa_total += node_mem[i];
+        }
+
+        if (numa_total != ram_size) {
+            error_report("total memory for NUMA nodes (%" PRIu64 ")"
+                         " should equal RAM size (" RAM_ADDR_FMT ")",
+                         numa_total, ram_size);
+            exit(1);
         }
 
         for (i = 0; i < nb_numa_nodes; i++) {
