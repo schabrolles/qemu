@@ -485,13 +485,20 @@ static const TypeInfo spapr_tce_bridge_info = {
 BusState *spapr_tce_bus_init(void)
 {
     DeviceState *dev;
+    BusState *qbus;
 
     /* Create bridge device */
     dev = qdev_create(NULL, spapr_tce_bridge_info.name);
     qdev_init_nofail(dev);
 
     /* Create bus on bridge device */
-    return qbus_create(TYPE_SPAPR_TCE_BUS, dev, "spapr-tce");
+    qbus = qbus_create(TYPE_SPAPR_TCE_BUS, dev, "spapr-tce");
+
+    if (qbus) {
+        qbus->allow_hotplug = true;
+    }
+
+    return qbus;
 }
 
 static void register_types(void)
