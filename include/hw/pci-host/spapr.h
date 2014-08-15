@@ -112,6 +112,7 @@ struct sPAPRPHBState {
         uint8_t *msi;
         uint8_t *msix;
     } v1;
+    bool ddw_enabled;
 
     QLIST_ENTRY(sPAPRPHBState) list;
 };
@@ -141,6 +142,9 @@ struct sPAPRPHBVFIOState {
 #define RTAS_EEH_REQ_RESET           2
 #define RTAS_EEH_REQ_CONFIGURE       3
 
+/* Default 64bit dynamic window offset */
+#define SPAPR_PCI_TCE64_START        0x8000000000000000ULL
+
 static inline qemu_irq spapr_phb_lsi_qirq(struct sPAPRPHBState *phb, int pin)
 {
     return xics_get_qirq(spapr->icp, phb->lsi_table[pin].irq);
@@ -160,5 +164,7 @@ void spapr_pci_rtas_init(void);
 sPAPRPHBState *spapr_pci_find_phb(sPAPREnvironment *spapr, uint64_t buid);
 PCIDevice *spapr_pci_find_dev(sPAPREnvironment *spapr, uint64_t buid,
                               uint32_t config_addr);
+int spapr_pci_ddw_remove(sPAPRPHBState *sphb, sPAPRTCETable *tcet);
+int spapr_pci_ddw_reset(sPAPRPHBState *sphb);
 
 #endif /* __HW_SPAPR_PCI_H__ */
