@@ -1279,7 +1279,7 @@ void cpudef_init(void)
 
 int tcg_available(void)
 {
-    return 0;
+    return 1;
 }
 
 int kvm_available(void)
