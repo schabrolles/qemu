@@ -4257,6 +4257,39 @@ static int vfio_container_do_ioctl(AddressSpace *as, int32_t groupid,
     return ret;
 }
 
+static int vfio_container_reset_msi(AddressSpace *as, int32_t groupid,
+                                    int req, struct vfio_eeh_pe_op *arg)
+{
+    VFIODevice *vdev;
+    VFIOGroup *group;
+
+    group = vfio_get_group(groupid, as);
+    if (!group) {
+        error_report("vfio: group %d not registered", groupid);
+        return -1;
+    }
+
+    switch (arg->op) {
+    case VFIO_EEH_PE_RESET_HOT:
+    case VFIO_EEH_PE_RESET_FUNDAMENTAL:
+        /*
+         * The MSIx table will be cleaned out by reset. We need
+         * disable it so that it can be reenabled properly. Also,
+         * the cached MSIx table should be cleared as it's not
+         * reflecting the contents in hardware.
+         */
+        QLIST_FOREACH(vdev, &group->device_list, next) {
+            if (msix_enabled(&vdev->pdev)) {
+                vfio_disable_msix(vdev);
+            }
+
+            msix_reset(&vdev->pdev);
+        }
+    }
+
+    return 0;
+}
+
 int vfio_container_ioctl(AddressSpace *as, int32_t groupid,
                          int req, void *param)
 {
@@ -4264,12 +4297,17 @@ int vfio_container_ioctl(AddressSpace *as, int32_t groupid,
     switch (req) {
     case VFIO_CHECK_EXTENSION:
     case VFIO_IOMMU_SPAPR_TCE_GET_INFO:
-    case VFIO_EEH_PE_OP:
     case VFIO_IOMMU_SPAPR_TCE_QUERY:
     case VFIO_IOMMU_SPAPR_TCE_CREATE:
     case VFIO_IOMMU_SPAPR_TCE_REMOVE:
     case VFIO_IOMMU_SPAPR_TCE_RESET:
         break;
+    case VFIO_EEH_PE_OP:
+        if (!vfio_container_reset_msi(as, groupid, req,
+                                      (struct vfio_eeh_pe_op *) param)) {
+            break;
+        }
+        /* fallthru */
     default:
         /* Return an error on unknown requests */
         error_report("vfio: unsupported ioctl %X", req);
