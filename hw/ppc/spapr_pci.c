@@ -1791,7 +1791,7 @@ static int spapr_pci_post_load(void *opaque, int version_id)
 
 static const VMStateDescription vmstate_spapr_pci = {
     .name = "spapr_pci",
-    .version_id = 2,
+    .version_id = 3,
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
     .pre_save = spapr_pci_pre_save,
@@ -1816,6 +1816,7 @@ static const VMStateDescription vmstate_spapr_pci = {
         VMSTATE_INT32_V(msi_devs_num, sPAPRPHBState, 2),
         VMSTATE_STRUCT_VARRAY_ALLOC(msi_devs, sPAPRPHBState, msi_devs_num, 2,
                                     vmstate_spapr_pci_msi, spapr_pci_msi_mig),
+        VMSTATE_UINT32_V(ddw_num, sPAPRPHBState, 3),
         VMSTATE_END_OF_LIST()
     },
 };
