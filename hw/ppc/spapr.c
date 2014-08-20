@@ -102,7 +102,6 @@ struct sPAPRMachineState {
 
     /*< public >*/
     char *kvm_type;
-    bool ddw_supported;
 };
 
 sPAPREnvironment *spapr;
@@ -1855,18 +1854,6 @@ static void ppc_cpu_do_nmi_on_cpu(void *arg)
     ppc_cpu_do_system_reset(cs);
 }
 
-static bool spapr_machine_get_ddw(Object *obj, Error **errp)
-{
-    sPAPRMachineState *sms = SPAPR_MACHINE(obj);
-    return sms->ddw_supported;
-}
-
-static void spapr_machine_set_ddw(Object *obj, bool value, Error **errp)
-{
-    sPAPRMachineState *sms = SPAPR_MACHINE(obj);
-    sms->ddw_supported = value;
-}
-
 static void spapr_nmi(NMIState *n, int cpu_index, Error **errp)
 {
     CPUState *cs;
@@ -1895,8 +1882,6 @@ static void spapr_machine_initfn(Object *obj)
 {
     object_property_add_str(obj, "kvm-type",
                             spapr_get_kvm_type, spapr_set_kvm_type, NULL);
-    object_property_add_bool(obj, "ddw", spapr_machine_get_ddw,
-                             spapr_machine_set_ddw, NULL);
 }
 
 static void spapr_machine_class_init(ObjectClass *oc, void *data)
