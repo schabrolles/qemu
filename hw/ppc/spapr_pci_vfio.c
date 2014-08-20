@@ -69,8 +69,6 @@ static void spapr_phb_vfio_finish_realize(sPAPRPHBState *sphb, Error **errp)
     /* Register default 32bit DMA window */
     memory_region_add_subregion(&sphb->iommu_root, tcet->bus_offset,
                                 spapr_tce_get_iommu(tcet));
-
-    sphb->ddw_supported = !!(info.flags & VFIO_IOMMU_SPAPR_TCE_FLAG_DDW);
 }
 
 static int spapr_phb_vfio_eeh_handler(sPAPRPHBState *sphb, int req, int opt)

@@ -111,7 +111,6 @@ struct sPAPRPHBState {
         uint8_t *msi;
         uint8_t *msix;
     } v1;
-    bool ddw_supported;
 
     QLIST_ENTRY(sPAPRPHBState) list;
 };
@@ -140,9 +139,6 @@ struct sPAPRPHBVFIOState {
 #define RTAS_EEH_REQ_GET_STATE       1
 #define RTAS_EEH_REQ_RESET           2
 #define RTAS_EEH_REQ_CONFIGURE       3
-
-/* Default 64bit dynamic window offset */
-#define SPAPR_PCI_TCE64_START        0x8000000000000000ULL
 
 static inline qemu_irq spapr_phb_lsi_qirq(struct sPAPRPHBState *phb, int pin)
 {
