@@ -21,85 +21,11 @@
 #include "hw/pci-host/spapr.h"
 #include "linux/vfio.h"
 #include "hw/misc/vfio.h"
-#include "dirent.h"
 
 static Property spapr_phb_vfio_properties[] = {
     DEFINE_PROP_INT32("iommu", sPAPRPHBVFIOState, iommugroupid, -1),
-    DEFINE_PROP_BOOL("scan", sPAPRPHBVFIOState, scan, false),
     DEFINE_PROP_END_OF_LIST(),
 };
-
-static void spapr_pci_vfio_scan(sPAPRPHBVFIOState *svphb, Error **errp)
-{
-    PCIHostState *phb = PCI_HOST_BRIDGE(svphb);
-    char *iommupath;
-    DIR *dirp;
-    struct dirent *entry;
-    Error *error = NULL;
-
-    iommupath = g_strdup_printf("/sys/kernel/iommu_groups/%d/devices/",
-                                svphb->iommugroupid);
-    if (!iommupath) {
-        return;
-    }
-
-    dirp = opendir(iommupath);
-    if (!dirp) {
-        error_setg_errno(errp, -errno, "spapr-vfio: vfio scan failed on opendir");
-        g_free(iommupath);
-        return;
-    }
-
-    while ((entry = readdir(dirp)) != NULL) {
-        Error *err = NULL;
-        char *tmp;
-        FILE *deviceclassfile;
-        unsigned deviceclass = 0, domainid, busid, devid, fnid;
-        DeviceState *dev;
-
-        if (sscanf(entry->d_name, "%X:%X:%X.%x",
-                   &domainid, &busid, &devid, &fnid) != 4) {
-            continue;
-        }
-
-        tmp = g_strdup_printf("%s%s/class", iommupath, entry->d_name);
-
-        deviceclassfile = fopen(tmp, "r");
-        if (deviceclassfile) {
-            int ret = fscanf(deviceclassfile, "%x", &deviceclass);
-            fclose(deviceclassfile);
-            if (ret != 1) {
-                continue;
-            }
-        }
-        g_free(tmp);
-
-        if (!deviceclass) {
-            continue;
-        }
-        if ((deviceclass >> 16) == (PCI_CLASS_BRIDGE_OTHER >> 8)) {
-            /* Skip bridges */
-            continue;
-        }
-
-        dev = qdev_create(BUS(phb->bus), "vfio-pci");
-        if (!dev) {
-            continue;
-        }
-
-        object_property_parse(OBJECT(dev), entry->d_name, "host", &err);
-        if (err != NULL) {
-            continue;
-        }
-        object_property_set_bool(OBJECT(dev), true, "realized", &error);
-        if (error) {
-            error_propagate(errp, error);
-            break;
-        }
-    }
-    closedir(dirp);
-    g_free(iommupath);
-}
 
 static void spapr_phb_vfio_finish_realize(sPAPRPHBState *sphb, Error **errp)
 {
@@ -143,14 +69,6 @@ static void spapr_phb_vfio_finish_realize(sPAPRPHBState *sphb, Error **errp)
     /* Register default 32bit DMA window */
     memory_region_add_subregion(&sphb->iommu_root, tcet->bus_offset,
                                 spapr_tce_get_iommu(tcet));
-
-    if (svphb->scan) {
-        Error *error = NULL;
-        spapr_pci_vfio_scan(svphb, &error);
-        if (error) {
-            error_propagate(errp, error);
-        }
-    }
 
     sphb->ddw_supported = !!(info.flags & VFIO_IOMMU_SPAPR_TCE_FLAG_DDW);
 }
