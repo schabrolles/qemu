@@ -997,6 +997,13 @@ static void spapr_reset_htab(sPAPREnvironment *spapr)
         /* Kernel handles htab, we don't need to allocate one */
         spapr->htab_shift = shift;
         kvmppc_kern_htab = true;
+
+        /* Tell readers to update their file descriptor */
+        pthread_mutex_lock(&spapr->htab_mutex);
+        if (spapr->htab_fd > 0) {
+            spapr->htab_fd_stale = true;
+        }
+        pthread_mutex_unlock(&spapr->htab_mutex);
     } else {
         if (!spapr->htab) {
             /* Allocate an htab if we don't yet have one */
@@ -1012,6 +1019,30 @@ static void spapr_reset_htab(sPAPREnvironment *spapr)
         spapr->rma_size = kvmppc_rma_size(spapr_node0_size(),
                                           spapr->htab_shift);
     }
+}
+
+/* A guest reset will cause spapr->htab_fd to become stale if being used.
+ * Reopen the file descriptor to make sure the whole HTAB is properly read.
+ */
+static int spapr_check_htab_fd(sPAPREnvironment *spapr)
+{
+    int rc = 0;
+
+    pthread_mutex_lock(&spapr->htab_mutex);
+
+    if (spapr->htab_fd_stale) {
+        close(spapr->htab_fd);
+        spapr->htab_fd = kvmppc_get_htab_fd(false);
+        if (spapr->htab_fd < 0) {
+            error_report("Unable to open fd for reading hash table from KVM: "
+                    "%s", strerror(errno));
+            rc = -1;
+        }
+        spapr->htab_fd_stale = false;
+    }
+
+    pthread_mutex_unlock(&spapr->htab_mutex);
+    return rc;
 }
 
 static void ppc_spapr_reset(void)
@@ -1156,7 +1187,10 @@ static int htab_save_setup(QEMUFile *f, void *opaque)
     } else {
         assert(kvm_enabled());
 
+        pthread_mutex_lock(&spapr->htab_mutex);
         spapr->htab_fd = kvmppc_get_htab_fd(false);
+        spapr->htab_fd_stale = false;
+        pthread_mutex_unlock(&spapr->htab_mutex);
         if (spapr->htab_fd < 0) {
             fprintf(stderr, "Unable to open fd for reading hash table from KVM: %s\n",
                     strerror(errno));
@@ -1309,6 +1343,11 @@ static int htab_save_iterate(QEMUFile *f, void *opaque)
     if (!spapr->htab) {
         assert(kvm_enabled());
 
+        rc = spapr_check_htab_fd(spapr);
+        if (rc < 0) {
+            return rc;
+        }
+
         rc = kvmppc_save_htab(f, spapr->htab_fd,
                               MAX_KVM_BUF_SIZE, MAX_ITERATION_NS);
         if (rc < 0) {
@@ -1339,6 +1378,11 @@ static int htab_save_complete(QEMUFile *f, void *opaque)
         int rc;
 
         assert(kvm_enabled());
+
+        rc = spapr_check_htab_fd(spapr);
+        if (rc < 0) {
+            return rc;
+        }
 
         rc = kvmppc_save_htab(f, spapr->htab_fd, MAX_KVM_BUF_SIZE, -1);
         if (rc < 0) {
@@ -1524,6 +1568,8 @@ static void ppc_spapr_init(QEMUMachineInitArgs *args)
         }
         spapr->htab_shift++;
     }
+
+    pthread_mutex_init(&spapr->htab_mutex, NULL);
 
     /* Set up Interrupt Controller before we create the VCPUs */
     spapr->icp = xics_system_init(smp_cpus * kvmppc_smt_threads() / smp_threads,

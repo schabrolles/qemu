@@ -71,6 +71,8 @@ typedef struct sPAPREnvironment {
     int htab_save_index;
     bool htab_first_pass;
     int htab_fd;
+    bool htab_fd_stale;
+    pthread_mutex_t htab_mutex;
 
     /* state for Dynamic Reconfiguration Connectors */
     sPAPRDrcEntry drc_table[SPAPR_DRC_TABLE_SIZE];
