@@ -180,7 +180,7 @@ void spapr_tce_free_table(sPAPRTCETable *tcet)
 {
     memory_region_destroy(&tcet->iommu);
 
-    object_unref(OBJECT(tcet));
+    object_unparent(OBJECT(tcet));
 }
 
 static void spapr_tce_table_finalize(Object *obj)
