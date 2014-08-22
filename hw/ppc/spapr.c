@@ -1923,9 +1923,24 @@ static const TypeInfo spapr_machine_2_1_info = {
 static void spapr_machine_2_2_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
+    static GlobalProperty compat_props[] = {
+        {
+            .driver   = TYPE_SPAPR_PCI_HOST_BRIDGE,
+            .property = "ddw",
+            .value    = stringify(on),
+        },
+        {
+            .driver   = TYPE_SPAPR_PCI_VFIO_HOST_BRIDGE,
+            .property = "ddw",
+            .value    = stringify(on),
+        },
+        { /* end of list */ }
+    };
+
     mc->name = "pseries-2.2";
     mc->desc = "pSeries Logical Partition (PAPR compliant) v2.2";
     mc->is_default = 1;
+    mc->compat_props = compat_props;
 }
 
 static const TypeInfo spapr_machine_2_2_info = {
