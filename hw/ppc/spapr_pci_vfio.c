@@ -128,18 +128,12 @@ static int spapr_phb_vfio_eeh_handler(sPAPRPHBState *sphb, int req, int opt)
                                 VFIO_EEH_PE_OP, &op);
 }
 
-static void spapr_phb_vfio_reset(DeviceState *qdev)
-{
-    /* Do nothing */
-}
-
 static void spapr_phb_vfio_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     sPAPRPHBClass *spc = SPAPR_PCI_HOST_BRIDGE_CLASS(klass);
 
     dc->props = spapr_phb_vfio_properties;
-    dc->reset = spapr_phb_vfio_reset;
     spc->finish_realize = spapr_phb_vfio_finish_realize;
     spc->eeh_handler = spapr_phb_vfio_eeh_handler;
 }

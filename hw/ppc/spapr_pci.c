@@ -1746,17 +1746,6 @@ static void spapr_phb_finish_realize(sPAPRPHBState *sphb, Error **errp)
     object_unref(OBJECT(tcet));
 }
 
-static int spapr_phb_children_reset(Object *child, void *opaque)
-{
-    DeviceState *dev = (DeviceState *) object_dynamic_cast(child, TYPE_DEVICE);
-
-    if (dev) {
-        device_reset(dev);
-    }
-
-    return 0;
-}
-
 static void spapr_phb_reset(DeviceState *qdev)
 {
     sPAPRPHBClass *spc = SPAPR_PCI_HOST_BRIDGE_GET_CLASS(qdev);
@@ -1764,9 +1753,6 @@ static void spapr_phb_reset(DeviceState *qdev)
     if (spc->ddw_reset) {
         spc->ddw_reset(SPAPR_PCI_HOST_BRIDGE(qdev));
     }
-
-    /* Reset the IOMMU state */
-    object_child_foreach(OBJECT(qdev), spapr_phb_children_reset, NULL);
 }
 
 static Property spapr_phb_properties[] = {
