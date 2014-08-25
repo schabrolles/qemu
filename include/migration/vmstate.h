@@ -134,6 +134,7 @@ struct VMStateDescription {
     int (*pre_load)(void *opaque);
     int (*post_load)(void *opaque, int version_id);
     void (*pre_save)(void *opaque);
+    bool (*compat_name)(void *opaque, const char *idstr, int instance_id);
     VMStateField *fields;
     const VMStateSubsection *subsections;
 };

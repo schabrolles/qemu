@@ -731,6 +731,12 @@ static SaveStateEntry *find_se(const char *idstr, int instance_id)
                  instance_id == se->alias_id))
                 return se;
         }
+
+        /* Migrating from a weird custom version? */
+        if (se->vmsd && se->vmsd->compat_name &&
+            se->vmsd->compat_name(se->opaque, idstr, instance_id)) {
+            return se;
+        }
     }
     return NULL;
 }
