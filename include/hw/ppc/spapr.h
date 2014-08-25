@@ -43,7 +43,6 @@ struct sPAPRDrcEntry {
 
 typedef struct sPAPREnvironment {
     struct VIOsPAPRBus *vio_bus;
-    BusState *tce_bus;
     QLIST_HEAD(, sPAPRPHBState) phbs;
     hwaddr msi_win_addr;
     MemoryRegion msiwindow;
@@ -554,6 +553,7 @@ struct sPAPRTCETable {
     QLIST_ENTRY(sPAPRTCETable) list;
     struct {
         uint32_t window_size;
+        char compat_name[256];
     } v1;
 };
 

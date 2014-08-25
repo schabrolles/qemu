@@ -89,11 +89,23 @@ static IOMMUTLBEntry spapr_tce_translate_iommu(MemoryRegion *iommu, hwaddr addr)
     return ret;
 }
 
+/*
+ * This hack is to support IOMMU migration from powerkvm-2.1-srvc.
+ */
+static bool spapr_tce_table_compat_name(void *opaque, const char *idstr,
+                                        int instance_id)
+{
+    sPAPRTCETable *tcet = SPAPR_TCE_TABLE(opaque);
+
+    return (0 == strcmp(idstr, tcet->v1.compat_name)) && !instance_id;
+}
+
 static const VMStateDescription vmstate_spapr_tce_table = {
     .name = "spapr_iommu",
     .version_id = 2,
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
+    .compat_name = spapr_tce_table_compat_name,
     .fields      = (VMStateField []) {
         /* Sanity check */
         VMSTATE_UINT32_EQUAL(liobn, sPAPRTCETable),
@@ -136,6 +148,8 @@ static int spapr_tce_table_realize(DeviceState *dev)
 
     QLIST_INSERT_HEAD(&spapr_tce_tables, tcet, list);
 
+    snprintf(tcet->v1.compat_name, sizeof(tcet->v1.compat_name),
+             "liobn@%08x/spapr_iommu", tcet->liobn);
     vmstate_register(DEVICE(tcet), tcet->liobn, &vmstate_spapr_tce_table,
                      tcet);
 
@@ -161,7 +175,7 @@ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn,
         return NULL;
     }
 
-    tcet = SPAPR_TCE_TABLE(qdev_create(spapr->tce_bus, TYPE_SPAPR_TCE_TABLE));
+    tcet = SPAPR_TCE_TABLE(object_new(TYPE_SPAPR_TCE_TABLE));
     tcet->liobn = liobn;
     tcet->bus_offset = bus_offset;
     tcet->page_shift = page_shift;
@@ -448,73 +462,9 @@ static TypeInfo spapr_tce_table_info = {
     .instance_finalize = spapr_tce_table_finalize,
 };
 
-static char *spapr_tce_bus_get_dev_name(DeviceState *qdev)
-{
-    sPAPRTCETable *tcet = SPAPR_TCE_TABLE(qdev);
-    char *name;
-
-    name = g_strdup_printf("liobn@%x", tcet->liobn);
-    return name;
-}
-
-static void spapr_tce_bus_class_init(ObjectClass *klass, void *data)
-{
-    BusClass *k = BUS_CLASS(klass);
-
-    k->get_dev_path = spapr_tce_bus_get_dev_name;
-}
-
-static const TypeInfo spapr_tce_bus_info = {
-    .name = TYPE_SPAPR_TCE_BUS,
-    .parent = TYPE_BUS,
-    .class_init = spapr_tce_bus_class_init,
-    .instance_size = sizeof(BusState),
-};
-
-static int spapr_tce_bridge_init(SysBusDevice *dev)
-{
-    /* nothing */
-    return 0;
-}
-
-static void spapr_tce_bridge_class_init(ObjectClass *klass, void *data)
-{
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
-
-    k->init = spapr_tce_bridge_init;
-}
-
-static const TypeInfo spapr_tce_bridge_info = {
-    .name          = "spapr-tce-bridge",
-    .parent        = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(SysBusDevice),
-    .class_init    = spapr_tce_bridge_class_init,
-};
-
-BusState *spapr_tce_bus_init(void)
-{
-    DeviceState *dev;
-    BusState *qbus;
-
-    /* Create bridge device */
-    dev = qdev_create(NULL, spapr_tce_bridge_info.name);
-    qdev_init_nofail(dev);
-
-    /* Create bus on bridge device */
-    qbus = qbus_create(TYPE_SPAPR_TCE_BUS, dev, "spapr-tce");
-
-    if (qbus) {
-        qbus->allow_hotplug = true;
-    }
-
-    return qbus;
-}
-
 static void register_types(void)
 {
     type_register_static(&spapr_tce_table_info);
-    type_register_static(&spapr_tce_bridge_info);
-    type_register_static(&spapr_tce_bus_info);
 }
 
 type_init(register_types);

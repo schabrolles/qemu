@@ -1955,7 +1955,7 @@ static int spapr_phb_children_dt(Object *child, void *opaque)
     sPAPRTCETable *tcet;
 
     tcet = (sPAPRTCETable *) object_dynamic_cast(child, TYPE_SPAPR_TCE_TABLE);
-    if (!tcet) {
+    if (!tcet || SPAPR_PCI_DMA_WINDOW_NUM(tcet->liobn)) {
         return 0;
     }
 
