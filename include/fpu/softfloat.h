@@ -32,6 +32,16 @@ this code that are retained.
 #ifndef __SOFTFLOAT_H__
 #define __SOFTFLOAT_H__
 
+#include <inttypes.h>
+#include "config-host.h"
+#include "qemu/osdep.h"
+
+#define make_float64(x) (uint64_t)(x)
+#define float64_val(x)  make_float64(x)
+typedef uint32_t uint32;
+typedef uint8_t uint8;
+typedef struct { int float_exception_flags, float_rounding_mode; } float_status;
+
 /*
 -------------------------------------------------------------------------------
 The macro `FLOATX80' must be defined to enable the extended double-precision
@@ -119,20 +129,20 @@ Routine to raise any or all of the software IEC/IEEE floating-point
 exception flags.
 -------------------------------------------------------------------------------
 */
-void float_raise( signed char );
+void float_raise( signed char,... );
 
 /*
 -------------------------------------------------------------------------------
 Software IEC/IEEE integer-to-floating-point conversion routines.
 -------------------------------------------------------------------------------
 */
-float32 int32_to_float32( signed int );
-float64 int32_to_float64( signed int );
+float32 int32_to_float32( signed int,... );
+float64 int32_to_float64( signed int,... );
 #ifdef FLOATX80
-floatx80 int32_to_floatx80( signed int );
+floatx80 int32_to_floatx80( signed int,... );
 #endif
 #ifdef FLOAT128
-float128 int32_to_float128( signed int );
+float128 int32_to_float128( signed int,... );
 #endif
 
 /*
@@ -140,14 +150,14 @@ float128 int32_to_float128( signed int );
 Software IEC/IEEE single-precision conversion routines.
 -------------------------------------------------------------------------------
 */
-signed int float32_to_int32( float32 );
-signed int float32_to_int32_round_to_zero( float32 );
-float64 float32_to_float64( float32 );
+signed int float32_to_int32( float32,... );
+signed int float32_to_int32_round_to_zero( float32,... );
+float64 float32_to_float64( float32,... );
 #ifdef FLOATX80
-floatx80 float32_to_floatx80( float32 );
+floatx80 float32_to_floatx80( float32,... );
 #endif
 #ifdef FLOAT128
-float128 float32_to_float128( float32 );
+float128 float32_to_float128( float32,... );
 #endif
 
 /*
@@ -155,34 +165,34 @@ float128 float32_to_float128( float32 );
 Software IEC/IEEE single-precision operations.
 -------------------------------------------------------------------------------
 */
-float32 float32_round_to_int( float32 );
-float32 float32_add( float32, float32 );
-float32 float32_sub( float32, float32 );
-float32 float32_mul( float32, float32 );
-float32 float32_div( float32, float32 );
-float32 float32_rem( float32, float32 );
-float32 float32_sqrt( float32 );
-char float32_eq( float32, float32 );
-char float32_le( float32, float32 );
-char float32_lt( float32, float32 );
-char float32_eq_signaling( float32, float32 );
-char float32_le_quiet( float32, float32 );
-char float32_lt_quiet( float32, float32 );
-char float32_is_signaling_nan( float32 );
+float32 float32_round_to_int( float32,... );
+float32 float32_add( float32, float32,... );
+float32 float32_sub( float32, float32,... );
+float32 float32_mul( float32, float32,... );
+float32 float32_div( float32, float32,... );
+float32 float32_rem( float32, float32,... );
+float32 float32_sqrt( float32,... );
+char float32_eq( float32, float32,... );
+char float32_le( float32, float32,... );
+char float32_lt( float32, float32,... );
+char float32_eq_signaling( float32, float32,... );
+char float32_le_quiet( float32, float32,... );
+char float32_lt_quiet( float32, float32,... );
+char float32_is_signaling_nan( float32,... );
 
 /*
 -------------------------------------------------------------------------------
 Software IEC/IEEE double-precision conversion routines.
 -------------------------------------------------------------------------------
 */
-signed int float64_to_int32( float64 );
-signed int float64_to_int32_round_to_zero( float64 );
-float32 float64_to_float32( float64 );
+signed int float64_to_int32( float64,... );
+signed int float64_to_int32_round_to_zero( float64,... );
+float32 float64_to_float32( float64,... );
 #ifdef FLOATX80
-floatx80 float64_to_floatx80( float64 );
+floatx80 float64_to_floatx80( float64,... );
 #endif
 #ifdef FLOAT128
-float128 float64_to_float128( float64 );
+float128 float64_to_float128( float64,... );
 #endif
 
 /*
@@ -190,20 +200,20 @@ float128 float64_to_float128( float64 );
 Software IEC/IEEE double-precision operations.
 -------------------------------------------------------------------------------
 */
-float64 float64_round_to_int( float64 );
-float64 float64_add( float64, float64 );
-float64 float64_sub( float64, float64 );
-float64 float64_mul( float64, float64 );
-float64 float64_div( float64, float64 );
-float64 float64_rem( float64, float64 );
-float64 float64_sqrt( float64 );
-char float64_eq( float64, float64 );
-char float64_le( float64, float64 );
-char float64_lt( float64, float64 );
-char float64_eq_signaling( float64, float64 );
-char float64_le_quiet( float64, float64 );
-char float64_lt_quiet( float64, float64 );
-char float64_is_signaling_nan( float64 );
+float64 float64_round_to_int( float64,... );
+float64 float64_add( float64, float64,... );
+float64 float64_sub( float64, float64,... );
+float64 float64_mul( float64, float64,... );
+float64 float64_div( float64, float64,... );
+float64 float64_rem( float64, float64,... );
+float64 float64_sqrt( float64,... );
+char float64_eq( float64, float64,... );
+char float64_le( float64, float64,... );
+char float64_lt( float64, float64,... );
+char float64_eq_signaling( float64, float64,... );
+char float64_le_quiet( float64, float64,... );
+char float64_lt_quiet( float64, float64,... );
+char float64_is_signaling_nan( float64,... );
 
 #ifdef FLOATX80
 
@@ -259,8 +269,8 @@ Software IEC/IEEE quadruple-precision conversion routines.
 */
 signed int float128_to_int32( float128 );
 signed int float128_to_int32_round_to_zero( float128 );
-float32 float128_to_float32( float128 );
-float64 float128_to_float64( float128 );
+float32 float128_to_float32( float128,... );
+float64 float128_to_float64( float128,... );
 #ifdef FLOATX80
 floatx80 float128_to_floatx80( float128 );
 #endif
@@ -270,13 +280,13 @@ floatx80 float128_to_floatx80( float128 );
 Software IEC/IEEE quadruple-precision operations.
 -------------------------------------------------------------------------------
 */
-float128 float128_round_to_int( float128 );
-float128 float128_add( float128, float128 );
-float128 float128_sub( float128, float128 );
-float128 float128_mul( float128, float128 );
-float128 float128_div( float128, float128 );
-float128 float128_rem( float128, float128 );
-float128 float128_sqrt( float128 );
+float128 float128_round_to_int( float128,... );
+float128 float128_add( float128, float128,... );
+float128 float128_sub( float128, float128,... );
+float128 float128_mul( float128, float128,... );
+float128 float128_div( float128, float128,... );
+float128 float128_rem( float128, float128,... );
+float128 float128_sqrt( float128,... );
 char float128_eq( float128, float128 );
 char float128_le( float128, float128 );
 char float128_lt( float128, float128 );
@@ -286,5 +296,79 @@ char float128_lt_quiet( float128, float128 );
 char float128_is_signaling_nan( float128 );
 
 #endif
+
+extern float32 stubfunc32(float32 x,...);
+extern float64 stubfunc64(float64 x,...);
+typedef struct CPUPPCState CPUPPCState;
+extern uint64_t helper_float32_to_float64(CPUPPCState *env, uint32_t arg);
+extern uint32_t helper_float64_to_float32(CPUPPCState *env, uint64_t arg);
+#define float32_to_float64 stubfunc64
+#define float64_to_float32 stubfunc32
+#define float32_is_any_nan stubfunc32
+#define float64_is_any_nan stubfunc32
+#define float64_to_uint32 stubfunc32
+#define float64_to_int64 stubfunc64
+#define float32_min stubfunc32
+#define float64_min stubfunc64
+#define float32_max stubfunc32
+#define float64_max stubfunc64
+#define float64_to_uint64 stubfunc64
+#define int64_to_float64 stubfunc64
+#define int64_to_float32 stubfunc32
+#define uint64_to_float32 stubfunc32
+#define uint32_to_float32 stubfunc32
+#define uint64_to_float64 stubfunc64
+#define float64_to_uint32_round_to_zero stubfunc32
+#define float64_to_uint64_round_to_zero stubfunc32
+#define float64_to_int64_round_to_zero stubfunc32
+#define float_muladd_negate_c stubfunc32(1)
+#define float_muladd_negate_result stubfunc32(2)
+#define float32_muladd stubfunc32
+#define float64_muladd stubfunc32
+#define float64_chs stubfunc32
+#define float64_scalbn stubfunc32
+#define float32_chs stubfunc32
+#define float64_sqrt stubfunc32
+#define float64_is_zero_or_denormal stubfunc32
+#define float32_scalbn stubfunc32
+#define float32_is_quiet_nan stubfunc32
+#define float32_to_uint32 stubfunc32
+#define float32_to_uint32_round_to_zero stubfunc32
+#define uint32_to_float64 stubfunc32
+#define float64_eq_quiet stubfunc32
+#define float32_compare_quiet stubfunc32
+#define float32_is_zero_or_denormal stubfunc32
+#define float32_exp2 stubfunc32
+#define float32_log2 stubfunc32
+#define float64_maxnum stubfunc32
+#define float32_maxnum stubfunc32
+#define float32_minnum stubfunc32
+#define float64_minnum stubfunc32
+#define float32_to_int64_round_to_zero stubfunc32
+#define float32_to_uint64_round_to_zero stubfunc32
+#define float32_is_infinity stubfunc32
+#define float32_is_neg stubfunc32
+#define float32_is_zero stubfunc32
+#define float64_is_infinity stubfunc64
+#define float64_is_neg stubfunc32
+#define float64_is_zero stubfunc32
+#define gen_helper_float32_to_float64(x,...) ({ stubfunc64(0); (x); })
+#define gen_helper_float64_to_float32(x,...) ({ stubfunc64(0); (x); })
+#define float128_is_infinity(x,...) stubfunc64(x.low)
+#define float128_is_neg(x,...) stubfunc64(x.low)
+#define float64_to_float128(x,...) ({ stubfunc64(0); ((float128){ .low = (x) }); })
+#define float64_one stubfunc64(1)
+#define float32_one stubfunc32(1)
+#define float_relation_equal stubfunc32(1)
+#define float_relation_unordered stubfunc32(0)
+#define float_relation_less stubfunc32(2)
+#define float_relation_greater stubfunc32(3)
+#define float_round_ties_away stubfunc32(0)
+
+static inline void stubfunc_noexit(float64 x,...){}
+#define get_float_exception_flags(a) (0)
+#define set_float_rounding_mode stubfunc_noexit
+#define set_float_exception_flags stubfunc_noexit
+#define set_flush_to_zero stubfunc_noexit
 
 #endif

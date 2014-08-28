@@ -28,6 +28,10 @@
         exit(1); \
     }
 
+_SYMBOL(stubfunc32)
+_SYMBOL(stubfunc64)
+_SYMBOL(helper_stubfunc32)
+_SYMBOL(helper_stubfunc64)
 _SYMBOL(add128)
 _SYMBOL(add192)
 _SYMBOL(addFloat128Sigs)
