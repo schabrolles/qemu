@@ -37,6 +37,9 @@
 
 #include <libfdt.h>
 
+#define BRANCH_INST_MASK  0xFC000000
+extern bool mc_in_progress;
+
 static void rtas_display_character(PowerPCCPU *cpu, sPAPREnvironment *spapr,
                                    uint32_t token, uint32_t nargs,
                                    target_ulong args,
@@ -294,6 +297,113 @@ static void rtas_ibm_os_term(PowerPCCPU *cpu,
     rtas_st(rets, 0, ret);
 }
 
+static void rtas_ibm_nmi_register(PowerPCCPU *cpu,
+                                  sPAPREnvironment *spapr,
+                                  uint32_t token, uint32_t nargs,
+                                  target_ulong args,
+                                  uint32_t nret, target_ulong rets)
+{
+    int i;
+    uint32_t ori_inst = 0x60630000;
+    uint32_t branch_inst = 0x48000002;
+    target_ulong guest_machine_check_addr;
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
+    /*
+     * Trampoline saves r3 in sprg2 and issues private hcall
+     * to request qemu to build error log. QEMU builds the
+     * error log, copies to rtas-blob and returns the address.
+     * The initial 16 bytes in rtas-blob consists of saved srr0
+     * and srr1 which we restore and pass on the actual error
+     * log address to OS handled mcachine check notification
+     * routine
+     */
+    uint32_t trampoline[] = {
+        0x7c7243a6,    /* mtspr   SPRN_SPRG2,r3 */
+        0x38600000,    /* li      r3,0   */
+        0x60630000,    /* ori     r3,r3,KVMPPC_H_REPORT_MC_ERR
+                        * The KVMPPC_H_REPORT_MC_ERR value is
+                        * patched below */
+                       /* Issue H_CALL */
+        0x44000022,    /*  sc      1     */
+        0x2fa30000,    /* cmplwi r3,0 */
+        0x409e0008,    /* bne continue */
+        0x4800020a,    /* retry KVMPPC_H_REPORT_MC_ERR */
+                       /* KVMPPC_H_REPORT_MC_ERR restores the SPRG2,
+                        * hence we are free to clobber it */
+        0x7c9243a6,    /* mtspr r4 sprg2 */
+        0xe8830000,    /* ld r4, 0(r3) */
+        0x7c9a03a6,    /* mtspr r4, srr0 */
+        0xe8830008,    /* ld r4, 8(r3) */
+        0x7c9b03a6,    /* mtspr r4, srr1 */
+        0x38630010,    /* addi r3,r3,16 */
+        0x7c9242a6,    /* mfspr r4 sprg2 */
+        0x48000002,    /* Branch to address registered
+                        * by OS. The branch address is
+                        * patched below */
+        0x48000000,    /* b . */
+    };
+    int total_inst = sizeof(trampoline) / sizeof(uint32_t);
+
+    /* Store the system reset and machine check address */
+    guest_machine_check_addr = rtas_ld(args, 1);
+
+    /* Safety Check */
+    QEMU_BUILD_BUG_ON(sizeof(trampoline) > MC_INTERRUPT_VECTOR_SIZE);
+
+    /* Update the KVMPPC_H_REPORT_MC_ERR value in trampoline */
+    ori_inst |= KVMPPC_H_REPORT_MC_ERR;
+    memcpy(&trampoline[2], &ori_inst, sizeof(ori_inst));
+
+    /*
+     * Sanity check guest_machine_check_addr to prevent clobbering
+     * operator value in branch instruction
+     */
+    if (guest_machine_check_addr & BRANCH_INST_MASK) {
+        fprintf(stderr, "Unable to register ibm,nmi_register: "
+                "Invalid machine check handler address\n");
+        rtas_st(rets, 0, RTAS_OUT_NOT_SUPPORTED);
+        return;
+    }
+
+    /*
+     * Update the branch instruction in trampoline
+     * with the absolute machine check address requested by OS.
+     */
+    branch_inst |= guest_machine_check_addr;
+    memcpy(&trampoline[14], &branch_inst, sizeof(branch_inst));
+
+    /* Handle all Host/Guest LE/BE combinations */
+    if ((*pcc->interrupts_big_endian)(cpu)) {
+        for (i = 0; i < total_inst; i++) {
+            trampoline[i] = cpu_to_be32(trampoline[i]);
+        }
+    } else {
+        for (i = 0; i < total_inst; i++) {
+            trampoline[i] = cpu_to_le32(trampoline[i]);
+        }
+    }
+
+    /* Patch 0x200 NMI interrupt vector memory area of guest */
+    cpu_physical_memory_write(MC_INTERRUPT_VECTOR, trampoline,
+                              sizeof(trampoline));
+
+    rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+}
+
+static void rtas_ibm_nmi_interlock(PowerPCCPU *cpu,
+                                   sPAPREnvironment *spapr,
+                                   uint32_t token, uint32_t nargs,
+                                   target_ulong args,
+                                   uint32_t nret, target_ulong rets)
+{
+    /*
+     * VCPU issuing ibm,nmi-interlock is done with NMI handling,
+     * hence unset mc_in_progress.
+     */
+    mc_in_progress = 0;
+    rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+}
+
 static struct rtas_call {
     const char *name;
     spapr_rtas_fn fn;
@@ -423,6 +533,12 @@ static void core_rtas_register_types(void)
                         rtas_ibm_set_system_parameter);
     spapr_rtas_register(RTAS_IBM_OS_TERM, "ibm,os-term",
                         rtas_ibm_os_term);
+    spapr_rtas_register(RTAS_IBM_NMI_REGISTER,
+                        "ibm,nmi-register",
+                        rtas_ibm_nmi_register);
+    spapr_rtas_register(RTAS_IBM_NMI_INTERLOCK,
+                        "ibm,nmi-interlock",
+                        rtas_ibm_nmi_interlock);
 }
 
 type_init(core_rtas_register_types)

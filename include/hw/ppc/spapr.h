@@ -469,8 +469,10 @@ int spapr_allocate_irq_block(int num, bool lsi, bool msi);
 #define RTAS_IBM_CREATE_PE_DMA_WINDOW           (RTAS_TOKEN_BASE + 0x27)
 #define RTAS_IBM_REMOVE_PE_DMA_WINDOW           (RTAS_TOKEN_BASE + 0x28)
 #define RTAS_IBM_RESET_PE_DMA_WINDOW            (RTAS_TOKEN_BASE + 0x29)
+#define RTAS_IBM_NMI_REGISTER                   (RTAS_TOKEN_BASE + 0x2A)
+#define RTAS_IBM_NMI_INTERLOCK                  (RTAS_TOKEN_BASE + 0x2B)
 
-#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2A)
+#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2C)
 
 /* RTAS ibm,get-system-parameter token values */
 #define RTAS_SYSPARM_SPLPAR_CHARACTERISTICS      20
@@ -587,5 +589,9 @@ void spapr_pci_hotplug_remove_event(DeviceState *qdev, int slot);
     OBJECT_CHECK(BusState, (obj), TYPE_SPAPR_TCE_BUS)
 
 BusState *spapr_tce_bus_init(void);
+
+/* Machine Check Interrupt related macros */
+#define MC_INTERRUPT_VECTOR           0x200
+#define MC_INTERRUPT_VECTOR_SIZE      0x100
 
 #endif /* !defined (__HW_SPAPR_H__) */
