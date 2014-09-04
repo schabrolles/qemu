@@ -14,6 +14,88 @@ struct SPRSyncState {
     target_ulong mask;
 };
 
+/* Offset from rtas-base where error log is placed */
+#define RTAS_ERROR_OFFSET       (TARGET_PAGE_SIZE)
+
+#define RTAS_ELOG_SEVERITY_SHIFT         0x5
+#define RTAS_ELOG_DISPOSITION_SHIFT      0x3
+#define RTAS_ELOG_INITIATOR_SHIFT        0x4
+
+/*
+ * Only required RTAS event severity, disposition, initiator
+ * target and type are copied from arch/powerpc/include/asm/rtas.h
+ */
+
+/* RTAS event severity */
+#define RTAS_SEVERITY_ERROR_SYNC    0x3
+
+/* RTAS event disposition */
+#define RTAS_DISP_NOT_RECOVERED     0x2
+
+/* RTAS event initiator */
+#define RTAS_INITIATOR_MEMORY       0x4
+
+/* RTAS event target */
+#define RTAS_TARGET_MEMORY          0x4
+
+/* RTAS event type */
+#define RTAS_TYPE_ECC_UNCORR        0x09
+
+/*
+ * Currently KVM only passes on the uncorrected machine
+ * check memory error to guest. Other machine check errors
+ * such as SLB multi-hit and TLB multi-hit are recovered
+ * in KVM and are not passed on to guest.
+ *
+ * DSISR Bit for uncorrected machine check error. Based
+ * on arch/powerpc/include/asm/mce.h
+ */
+#define PPC_BIT(bit)                (0x8000000000000000ULL >> bit)
+#define P7_DSISR_MC_UE              (PPC_BIT(48))  /* P8 too */
+
+/* Adopted from kernel source arch/powerpc/include/asm/rtas.h */
+struct rtas_error_log {
+    /* Byte 0 */
+    uint8_t     byte0;          /* Architectural version */
+
+    /* Byte 1 */
+    uint8_t     byte1;
+    /* XXXXXXXX
+     * XXX      3: Severity level of error
+     *    XX    2: Degree of recovery
+     *      X   1: Extended log present?
+     *       XX 2: Reserved
+     */
+
+    /* Byte 2 */
+    uint8_t     byte2;
+    /* XXXXXXXX
+     * XXXX     4: Initiator of event
+     *     XXXX 4: Target of failed operation
+     */
+    uint8_t     byte3;          /* General event or error*/
+};
+
+/*
+ * Data format in RTAS-Blob
+ *
+ * This structure contains error information related to Machine
+ * Check exception. This is filled up and copied to rtas-blob
+ * upon machine check exception.
+ */
+struct rtas_mc_log {
+    target_ulong srr0;
+    target_ulong srr1;
+    /*
+     * Beginning of error log address. This is properly
+     * populated and passed on to OS registered machine
+     * check notification routine upon machine check
+     * exception
+     */
+    target_ulong r3;
+    struct rtas_error_log err_log;
+};
+
 static void do_spr_sync(void *arg)
 {
     struct SPRSyncState *s = arg;
@@ -586,6 +668,77 @@ static target_ulong h_rtas_update(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return 0;
 }
 
+static target_ulong h_report_mc_err(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+                                 target_ulong opcode, target_ulong *args)
+{
+    struct rtas_mc_log mc_log;
+    CPUPPCState *env = &cpu->env;
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
+
+    /*
+     * We save the original r3 register in SPRG2 in 0x200 vector,
+     * which is patched during call to ibm.nmi-register. Original
+     * r3 is required to be included in error log
+     */
+    mc_log.r3 = env->spr[SPR_SPRG2];
+
+    /*
+     * SRR0 and SRR1, containing nip and msr at the time of exception,
+     * are clobbered when we return from this hcall. Hence they
+     * need to be properly saved and restored. We save srr0
+     * and srr1 in rtas blob and restore it in 0x200 vector
+     * before branching to OS registered machine check handler
+     */
+    mc_log.srr0 = env->spr[SPR_SRR0];
+    mc_log.srr1 = env->spr[SPR_SRR1];
+
+    /* Set error log fields */
+    mc_log.err_log.byte0 = 0x00;
+    mc_log.err_log.byte1 =
+        (RTAS_SEVERITY_ERROR_SYNC << RTAS_ELOG_SEVERITY_SHIFT);
+    mc_log.err_log.byte1 |=
+        (RTAS_DISP_NOT_RECOVERED << RTAS_ELOG_DISPOSITION_SHIFT);
+    mc_log.err_log.byte2 =
+        (RTAS_INITIATOR_MEMORY << RTAS_ELOG_INITIATOR_SHIFT);
+    mc_log.err_log.byte2 |= RTAS_TARGET_MEMORY;
+
+    if (env->spr[SPR_DSISR] & P7_DSISR_MC_UE) {
+        mc_log.err_log.byte3 = RTAS_TYPE_ECC_UNCORR;
+    } else {
+        mc_log.err_log.byte3 = 0x0;
+    }
+
+    /* Handle all Host/Guest LE/BE combinations */
+    if ((*pcc->interrupts_big_endian)(cpu)) {
+        mc_log.srr0 = cpu_to_be64(mc_log.srr0);
+        mc_log.srr1 = cpu_to_be64(mc_log.srr1);
+        mc_log.r3 = cpu_to_be64(mc_log.r3);
+    } else {
+        mc_log.srr0 = cpu_to_le64(mc_log.srr0);
+        mc_log.srr1 = cpu_to_le64(mc_log.srr1);
+        mc_log.r3 = cpu_to_le64(mc_log.r3);
+    }
+
+    cpu_physical_memory_write(spapr->rtas_addr + RTAS_ERROR_OFFSET,
+                              &mc_log, sizeof(mc_log));
+
+    /*
+     * spapr->rtas_addr + RTAS_ERROR_OFFSET now contains srr0, srr1,
+     * original r3, followed by the error log structure. The address
+     * of the error log should be passed on to guest's machine check
+     * notification routine. As this hcall is directly called from
+     * 0x200 interrupt vector and returns to assembly routine, we
+     * return (spapr->rtas_addr + RTAS_ERROR_OFFSET) instead of
+     * H_SUCCESS. Upon return, We restore srr0 and srr1, increment
+     * r3 to point to the error log and branch to machine check
+     * notification routine in 0x200. r3 containing the error address
+     * is now argument to OS registered machine check notification
+     * routine. This way we also avoids clobbering additional
+     * registers in 0x200 vector.
+     */
+    return spapr->rtas_addr + RTAS_ERROR_OFFSET;
+}
+
 static target_ulong h_logical_load(PowerPCCPU *cpu, sPAPREnvironment *spapr,
                                    target_ulong opcode, target_ulong *args)
 {
@@ -1011,6 +1164,7 @@ static void hypercall_register_types(void)
     /* qemu/KVM-PPC specific hcalls */
     spapr_register_hypercall(KVMPPC_H_RTAS, h_rtas);
     spapr_register_hypercall(KVMPPC_H_RTAS_UPDATE, h_rtas_update);
+    spapr_register_hypercall(KVMPPC_H_REPORT_MC_ERR, h_report_mc_err);
 
     spapr_register_hypercall(H_SET_MODE, h_set_mode);
 
