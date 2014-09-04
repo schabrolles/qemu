@@ -1639,6 +1639,10 @@ static void ppc_spapr_init(QEMUMachineInitArgs *args)
 
     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, "spapr-rtas.bin");
     spapr->rtas_size = get_image_size(filename);
+
+    /* Resize blob to accommodate error log at a page aligned address */
+    spapr->rtas_size = TARGET_PAGE_ALIGN(spapr->rtas_size) + TARGET_PAGE_SIZE;
+
     spapr->rtas_blob = g_malloc(spapr->rtas_size);
     if (load_image_size(filename, spapr->rtas_blob, spapr->rtas_size) < 0) {
         hw_error("qemu: could not load LPAR rtas '%s'\n", filename);
