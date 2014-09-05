@@ -47,10 +47,12 @@
 #define CURL_NUM_ACB    8
 #define SECTOR_SIZE     512
 #define READ_AHEAD_SIZE (256 * 1024)
+#define CURL_TIMEOUT_DEFAULT 5
 
 #define FIND_RET_NONE   0
 #define FIND_RET_OK     1
 #define FIND_RET_WAIT   2
+#define CURL_BLOCK_OPT_TIMEOUT "timeout"
 
 struct BDRVCURLState;
 
@@ -87,6 +89,7 @@ typedef struct BDRVCURLState {
     CURLState states[CURL_NUM_STATES];
     char *url;
     size_t readahead_size;
+    int timeout;
     bool accept_range;
 } BDRVCURLState;
 
@@ -349,7 +352,7 @@ static CURLState *curl_init_state(BDRVCURLState *s)
     if (!state->curl)
         return NULL;
     curl_easy_setopt(state->curl, CURLOPT_URL, s->url);
-    curl_easy_setopt(state->curl, CURLOPT_TIMEOUT, 5);
+    curl_easy_setopt(state->curl, CURLOPT_TIMEOUT, s->timeout);
     curl_easy_setopt(state->curl, CURLOPT_WRITEFUNCTION, (void *)curl_read_cb);
     curl_easy_setopt(state->curl, CURLOPT_WRITEDATA, (void *)state);
     curl_easy_setopt(state->curl, CURLOPT_PRIVATE, (void *)state);
@@ -444,6 +447,11 @@ static QemuOptsList runtime_opts = {
             .type = QEMU_OPT_SIZE,
             .help = "Readahead size",
         },
+        {
+            .name = CURL_BLOCK_OPT_TIMEOUT,
+            .type = QEMU_OPT_NUMBER,
+            .help = "Curl timeout"
+        },
         { /* end of list */ }
     },
 };
@@ -478,6 +486,9 @@ static int curl_open(BlockDriverState *bs, QDict *options, int flags,
                    s->readahead_size);
         goto out_noclean;
     }
+
+    s->timeout = qemu_opt_get_number(opts, CURL_BLOCK_OPT_TIMEOUT,
+                                     CURL_TIMEOUT_DEFAULT);
 
     file = qemu_opt_get(opts, "url");
     if (file == NULL) {

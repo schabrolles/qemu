@@ -2186,6 +2186,58 @@ qemu-system-x86_64 --drive file=gluster://192.0.2.1/testvol/a.img
 @end example
 
 See also @url{http://www.gluster.org}.
+
+@item HTTP/HTTPS/FTP/FTPS/TFTP
+QEMU supports read-only access to files accessed over http(s), ftp(s) and tftp.
+
+Syntax using a single filename:
+@example
+<protocol>://[<username>[:<password>]@@]<host>/<path>
+@end example
+
+where:
+@table @option
+@item protocol
+'http', 'https', 'ftp', 'ftps', or 'tftp'.
+
+@item username
+Optional username for authentication to the remote server.
+
+@item password
+Optional password for authentication to the remote server.
+
+@item host
+Address of the remote server.
+
+@item path
+Path on the remote server, including any query string.
+@end table
+
+The following options are also supported:
+@table @option
+@item url
+The full URL when passing options to the driver explicitly.
+
+@item readahead
+The amount of data to read ahead with each range request to the remote server.
+This value may optionally have the suffix 'T', 'G', 'M', 'K', 'k' or 'b'. If it
+does not have a suffix, it will be assumed to be in bytes. The value must be a
+multiple of 512 bytes. It defaults to 256k.
+
+@item timeout
+Set the timeout in seconds of the CURL connection. This timeout is the time
+that CURL waits for a response from the remote server to get the size of the
+image to be downloaded. If not set, the default timeout of 5 seconds is used.
+@end table
+
+Note that when passing options to qemu explicitly, @option{driver} is the value
+of <protocol>.
+
+Example: boot from a remote Fedora 20 live ISO image, with a readahead of 64k
+and timeout of 10 seconds.
+@example
+qemu-system-x86_64 --drive media=cdrom,file.driver=http,file.readahead=64k,file.timeout=10,file.url=http://dl.fedoraproject.org/pub/fedora/linux/releases/20/Live/x86_64/Fedora-Live-Desktop-x86_64-20-1.iso,readonly
+@end example
 ETEXI
 
 STEXI
