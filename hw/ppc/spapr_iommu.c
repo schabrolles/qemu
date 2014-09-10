@@ -149,7 +149,7 @@ static int spapr_tce_table_realize(DeviceState *dev)
     QLIST_INSERT_HEAD(&spapr_tce_tables, tcet, list);
 
     snprintf(tcet->v1.compat_name, sizeof(tcet->v1.compat_name),
-             "liobn@%08x/spapr_iommu", tcet->liobn);
+             "liobn@%x/spapr_iommu", tcet->liobn);
     vmstate_register(DEVICE(tcet), tcet->liobn, &vmstate_spapr_tce_table,
                      tcet);
 
