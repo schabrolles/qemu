@@ -1154,7 +1154,7 @@ static int spapr_pci_ddw_query(sPAPRPHBState *sphb,
                                uint32_t *windows_available,
                                uint32_t *page_size_mask)
 {
-    *windows_available = 1;
+    *windows_available = 0;
     *page_size_mask = DDW_PGSIZE_64K | DDW_PGSIZE_16M;
 
     return 0;
