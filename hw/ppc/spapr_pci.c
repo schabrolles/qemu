@@ -1155,7 +1155,7 @@ static int spapr_pci_ddw_query(sPAPRPHBState *sphb,
                                uint32_t *page_size_mask)
 {
     *windows_available = 1;
-    *page_size_mask = DDW_PGSIZE_16M;
+    *page_size_mask = DDW_PGSIZE_64K | DDW_PGSIZE_16M;
 
     return 0;
 }
@@ -1765,7 +1765,7 @@ static Property spapr_phb_properties[] = {
     DEFINE_PROP_UINT64("io_win_addr", sPAPRPHBState, io_win_addr, -1),
     DEFINE_PROP_UINT64("io_win_size", sPAPRPHBState, io_win_size,
                        SPAPR_PCI_IO_WIN_SIZE),
-    DEFINE_PROP_BOOL("ddw", sPAPRPHBState, ddw_enabled, false),
+    DEFINE_PROP_BOOL("ddw", sPAPRPHBState, ddw_enabled, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
