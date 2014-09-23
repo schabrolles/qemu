@@ -920,6 +920,7 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed,
     return 1;
 }
 
+#ifdef trace_event_get_state
 static void ohci_td_pkt(const char *msg, const uint8_t *buf, size_t len)
 {
     bool print16 = !!trace_event_get_state(TRACE_USB_OHCI_TD_PKT_SHORT);
@@ -950,6 +951,11 @@ static void ohci_td_pkt(const char *msg, const uint8_t *buf, size_t len)
         p += sprintf(p, " %.2x", buf[i]);
     }
 }
+#else
+static void ohci_td_pkt(const char *msg, const uint8_t *buf, size_t len)
+{
+}
+#endif
 
 /* Service a transport descriptor.
    Returns nonzero to terminate processing of this endpoint.  */
