@@ -322,6 +322,8 @@ typedef void EndTransferFunc(IDEState *);
 typedef void DMAStartFunc(IDEDMA *, IDEState *, BlockDriverCompletionFunc *);
 typedef int DMAFunc(IDEDMA *);
 typedef int DMAIntFunc(IDEDMA *, int);
+typedef void DMAu32Func(IDEDMA *, uint32_t);
+typedef void DMAStopFunc(IDEDMA *, bool);
 typedef void DMARestartFunc(void *, int, RunState);
 
 struct unreported_events {
@@ -429,6 +431,7 @@ struct IDEDMAOps {
     DMAStartFunc *start_dma;
     DMAFunc *start_transfer;
     DMAIntFunc *prepare_buf;
+    DMAu32Func *commit_buf;
     DMAIntFunc *rw_buf;
     DMAIntFunc *set_unit;
     DMAIntFunc *add_status;
