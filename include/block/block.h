@@ -333,8 +333,6 @@ BlockDriverAIOCB *bdrv_aio_ioctl(BlockDriverState *bs,
 void bdrv_invalidate_cache(BlockDriverState *bs, Error **errp);
 void bdrv_invalidate_cache_all(Error **errp);
 
-void bdrv_clear_incoming_migration_all(void);
-
 /* Ensure contents are flushed to disk.  */
 int bdrv_flush(BlockDriverState *bs);
 int coroutine_fn bdrv_co_flush(BlockDriverState *bs);

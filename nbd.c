@@ -815,6 +815,7 @@ NBDExport *nbd_export_new(BlockDriverState *bs, off_t dev_offset,
     exp->size = size == -1 ? bdrv_getlength(bs) : size;
     exp->close = close;
     bdrv_ref(bs);
+    bdrv_invalidate_cache(bs, NULL);
     return exp;
 }
 
