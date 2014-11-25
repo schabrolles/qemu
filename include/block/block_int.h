@@ -394,7 +394,8 @@ int is_windows_drive(const char *filename);
 #endif
 void bdrv_emit_qmp_error_event(const BlockDriverState *bdrv,
                                enum MonitorEvent ev,
-                               BlockErrorAction action, bool is_read);
+                               BlockErrorAction action, bool is_read,
+                               int error);
 
 /**
  * stream_start:
