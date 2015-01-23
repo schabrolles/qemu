@@ -1418,6 +1418,7 @@ static void spapr_drc_state_reset(sPAPRDrcEntry *drc_entry)
 
     g_free(ccs->fdt);
     ccs->fdt = NULL;
+    pci_device_reset(ccs->dev);
     object_unparent(OBJECT(ccs->dev));
     ccs->dev = NULL;
     ccs->state = CC_STATE_IDLE;
