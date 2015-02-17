@@ -192,15 +192,16 @@ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn)
 
 static void spapr_tce_table_do_enable(sPAPRTCETable *tcet)
 {
-    uint64_t window_size = (uint64_t)tcet->nb_table << tcet->page_shift;
 
     if (!tcet->nb_table) {
         return;
     }
 
-    if (kvm_enabled() && !(window_size >> 32)) {
+    if (kvm_enabled()) {
         tcet->table = kvmppc_create_spapr_tce(tcet->liobn,
-                                              window_size,
+                                              tcet->nb_table,
+                                              tcet->bus_offset,
+                                              tcet->page_shift,
                                               &tcet->fd,
                                               tcet->vfio_accel);
     }
