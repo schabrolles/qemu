@@ -69,6 +69,10 @@ typedef struct VFIOType1 {
     bool initialized;
 } VFIOType1;
 
+typedef struct VFIOSPAPR {
+    MemoryListener listener;
+} VFIOSPAPR;
+
 typedef struct VFIOContainer {
     VFIOAddressSpace *space;
     int fd; /* /dev/vfio/vfio, empowered by the attached groups */
@@ -76,6 +80,7 @@ typedef struct VFIOContainer {
         /* enable abstraction to support various iommu backends */
         union {
             VFIOType1 type1;
+            VFIOSPAPR spapr;
         };
         void (*release)(struct VFIOContainer *);
     } iommu_data;
@@ -144,5 +149,13 @@ int vfio_get_device(VFIOGroup *group, const char *name,
 extern const MemoryRegionOps vfio_region_ops;
 extern QLIST_HEAD(vfio_group_head, VFIOGroup) vfio_group_list;
 extern QLIST_HEAD(vfio_as_head, VFIOAddressSpace) vfio_address_spaces;
+
+extern int vfio_dma_map(VFIOContainer *container, hwaddr iova,
+                        ram_addr_t size, void *vaddr, bool readonly);
+extern int vfio_dma_unmap(VFIOContainer *container,
+                          hwaddr iova, ram_addr_t size);
+bool vfio_listener_skipped_section(MemoryRegionSection *section);
+
+extern void spapr_memory_listener_register(VFIOContainer *container);
 
 #endif /* !HW_VFIO_VFIO_COMMON_H */
