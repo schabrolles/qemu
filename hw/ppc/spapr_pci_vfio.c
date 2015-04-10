@@ -23,11 +23,11 @@
 #include "hw/vfio/vfio.h"
 
 static Property spapr_phb_vfio_properties[] = {
-    DEFINE_PROP_INT32("iommu", sPAPRPHBVFIOState, iommugroupid, -1),
+    DEFINE_PROP_INT32("iommu", sPAPRPHBState, iommugroupid, -1),
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static int spapr_phb_vfio_dma_capabilities_update(sPAPRPHBState *sphb)
+int spapr_phb_vfio_dma_capabilities_update(sPAPRPHBState *sphb)
 {
     struct vfio_iommu_spapr_tce_info info = { .argsz = sizeof(info) };
     int ret;
@@ -44,21 +44,7 @@ static int spapr_phb_vfio_dma_capabilities_update(sPAPRPHBState *sphb)
     return ret;
 }
 
-static int spapr_phb_vfio_dma_init_window(sPAPRPHBState *sphb,
-                                          uint32_t liobn, uint32_t page_shift,
-                                          uint64_t window_size)
-{
-    uint64_t bus_offset = sphb->dma32_window_start;
-    sPAPRTCETable *tcet = spapr_tce_find_by_liobn(liobn);
-
-    spapr_tce_table_enable(tcet, bus_offset, page_shift,
-                           window_size >> page_shift,
-                           true);
-
-    return 0;
-}
-
-static int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
+int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
                                          unsigned int addr, int option)
 {
     struct vfio_eeh_pe_op op = { .argsz = sizeof(op) };
@@ -106,7 +92,7 @@ static int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
     return RTAS_OUT_SUCCESS;
 }
 
-static int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state)
+int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state)
 {
     struct vfio_eeh_pe_op op = { .argsz = sizeof(op) };
     int ret;
@@ -122,7 +108,7 @@ static int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state)
     return RTAS_OUT_SUCCESS;
 }
 
-static int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option)
+int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option)
 {
     struct vfio_eeh_pe_op op = { .argsz = sizeof(op) };
     int ret;
@@ -150,7 +136,7 @@ static int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option)
     return RTAS_OUT_SUCCESS;
 }
 
-static int spapr_phb_vfio_eeh_configure(sPAPRPHBState *sphb)
+int spapr_phb_vfio_eeh_configure(sPAPRPHBState *sphb)
 {
     struct vfio_eeh_pe_op op = { .argsz = sizeof(op) };
     int ret;
@@ -168,21 +154,14 @@ static int spapr_phb_vfio_eeh_configure(sPAPRPHBState *sphb)
 static void spapr_phb_vfio_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    sPAPRPHBClass *spc = SPAPR_PCI_HOST_BRIDGE_CLASS(klass);
 
     dc->props = spapr_phb_vfio_properties;
-    spc->dma_capabilities_update = spapr_phb_vfio_dma_capabilities_update;
-    spc->dma_init_window = spapr_phb_vfio_dma_init_window;
-    spc->eeh_set_option = spapr_phb_vfio_eeh_set_option;
-    spc->eeh_get_state = spapr_phb_vfio_eeh_get_state;
-    spc->eeh_reset = spapr_phb_vfio_eeh_reset;
-    spc->eeh_configure = spapr_phb_vfio_eeh_configure;
 }
 
 static const TypeInfo spapr_phb_vfio_info = {
     .name          = TYPE_SPAPR_PCI_VFIO_HOST_BRIDGE,
     .parent        = TYPE_SPAPR_PCI_HOST_BRIDGE,
-    .instance_size = sizeof(sPAPRPHBVFIOState),
+    .instance_size = sizeof(sPAPRPHBState),
     .class_init    = spapr_phb_vfio_class_init,
     .class_size    = sizeof(sPAPRPHBClass),
 };

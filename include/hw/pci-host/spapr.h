@@ -47,15 +47,6 @@ typedef struct sPAPRPHBVFIOState sPAPRPHBVFIOState;
 
 struct sPAPRPHBClass {
     PCIHostBridgeClass parent_class;
-
-    int (*dma_capabilities_update)(sPAPRPHBState *sphb);
-    int (*dma_init_window)(sPAPRPHBState *sphb,
-                           uint32_t liobn, uint32_t page_shift,
-                           uint64_t window_size);
-    int (*eeh_set_option)(sPAPRPHBState *sphb, unsigned int addr, int option);
-    int (*eeh_get_state)(sPAPRPHBState *sphb, int *state);
-    int (*eeh_reset)(sPAPRPHBState *sphb, int option);
-    int (*eeh_configure)(sPAPRPHBState *sphb);
 };
 
 typedef struct spapr_pci_msi {
@@ -95,14 +86,10 @@ struct sPAPRPHBState {
 
     uint32_t dma32_window_start;
     uint32_t dma32_window_size;
+    bool has_vfio;
+    int32_t iommugroupid; /* obsolete */
 
     QLIST_ENTRY(sPAPRPHBState) list;
-};
-
-struct sPAPRPHBVFIOState {
-    sPAPRPHBState phb;
-
-    int32_t iommugroupid;
 };
 
 #define SPAPR_PCI_MAX_INDEX          255
@@ -144,5 +131,13 @@ PCIDevice *spapr_pci_find_dev(sPAPREnvironment *spapr, uint64_t buid,
 int spapr_phb_dma_remove_window(sPAPRPHBState *sphb,
                                 sPAPRTCETable *tcet);
 int spapr_phb_dma_reset(sPAPRPHBState *sphb);
+
+int spapr_phb_vfio_dma_capabilities_update(sPAPRPHBState *sphb);
+int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
+                                  unsigned int addr, int option);
+int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state);
+int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option);
+int spapr_phb_vfio_eeh_configure(sPAPRPHBState *sphb);
+
 
 #endif /* __HW_SPAPR_PCI_H__ */
