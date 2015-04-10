@@ -58,11 +58,6 @@ static int spapr_phb_vfio_dma_init_window(sPAPRPHBState *sphb,
     return 0;
 }
 
-static void spapr_phb_vfio_reset(DeviceState *qdev)
-{
-    /* Do nothing */
-}
-
 static int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
                                          unsigned int addr, int option)
 {
@@ -176,7 +171,6 @@ static void spapr_phb_vfio_class_init(ObjectClass *klass, void *data)
     sPAPRPHBClass *spc = SPAPR_PCI_HOST_BRIDGE_CLASS(klass);
 
     dc->props = spapr_phb_vfio_properties;
-    dc->reset = spapr_phb_vfio_reset;
     spc->dma_capabilities_update = spapr_phb_vfio_dma_capabilities_update;
     spc->dma_init_window = spapr_phb_vfio_dma_init_window;
     spc->eeh_set_option = spapr_phb_vfio_eeh_set_option;

@@ -1113,7 +1113,6 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     SysBusDevice *s = SYS_BUS_DEVICE(dev);
     sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(s);
     PCIHostState *phb = PCI_HOST_BRIDGE(s);
-    sPAPRPHBClass *info = SPAPR_PCI_HOST_BRIDGE_GET_CLASS(s);
     char *namebuf;
     int i;
     PCIBus *bus;
@@ -1274,14 +1273,6 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
             return;
     }
 
-    info->dma_capabilities_update(sphb);
-    info->dma_init_window(sphb, sphb->dma_liobn, SPAPR_TCE_PAGE_SHIFT,
-                          sphb->dma32_window_size);
-    tcet = spapr_tce_find_by_liobn(sphb->dma_liobn);
-    if (!tcet) {
-        error_setg(errp, "failed to create TCE table");
-        return;
-    }
     memory_region_add_subregion(&sphb->iommu_root, 0,
                                 spapr_tce_get_iommu(tcet));
 
@@ -1310,6 +1301,40 @@ static int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
     return 0;
 }
 
+int spapr_phb_dma_remove_window(sPAPRPHBState *sphb,
+                                sPAPRTCETable *tcet)
+{
+    spapr_tce_table_disable(tcet);
+
+    return 0;
+}
+
+static int spapr_phb_disable_dma_windows(Object *child, void *opaque)
+{
+    sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(opaque);
+    sPAPRTCETable *tcet = (sPAPRTCETable *)
+        object_dynamic_cast(child, TYPE_SPAPR_TCE_TABLE);
+
+    if (tcet) {
+        spapr_phb_dma_remove_window(sphb, tcet);
+    }
+
+    return 0;
+}
+
+int spapr_phb_dma_reset(sPAPRPHBState *sphb)
+{
+    const uint32_t liobn = SPAPR_PCI_LIOBN(sphb->index, 0);
+    sPAPRPHBClass *spc = SPAPR_PCI_HOST_BRIDGE_GET_CLASS(sphb);
+
+    spc->dma_capabilities_update(sphb); /* Refresh @has_vfio status */
+    object_child_foreach(OBJECT(sphb), spapr_phb_disable_dma_windows, sphb);
+    spc->dma_init_window(sphb, liobn, SPAPR_TCE_PAGE_SHIFT,
+                         sphb->dma32_window_size);
+
+    return 0;
+}
+
 static int spapr_phb_children_reset(Object *child, void *opaque)
 {
     DeviceState *dev = (DeviceState *) object_dynamic_cast(child, TYPE_DEVICE);
@@ -1323,6 +1348,8 @@ static int spapr_phb_children_reset(Object *child, void *opaque)
 
 static void spapr_phb_reset(DeviceState *qdev)
 {
+    spapr_phb_dma_reset(SPAPR_PCI_HOST_BRIDGE(qdev));
+
     /* Reset the IOMMU state */
     object_child_foreach(OBJECT(qdev), spapr_phb_children_reset, NULL);
 }
