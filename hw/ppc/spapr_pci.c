@@ -1268,6 +1268,12 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         }
     }
 
+    tcet = spapr_tce_new_table(DEVICE(sphb), sphb->dma_liobn);
+    if (!tcet) {
+            error_setg(errp, "failed to create TCE table");
+            return;
+    }
+
     info->dma_capabilities_update(sphb);
     info->dma_init_window(sphb, sphb->dma_liobn, SPAPR_TCE_PAGE_SHIFT,
                           sphb->dma32_window_size);
@@ -1295,13 +1301,13 @@ static int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
                                      uint64_t window_size)
 {
     uint64_t bus_offset = sphb->dma32_window_start;
-    sPAPRTCETable *tcet;
+    sPAPRTCETable *tcet = spapr_tce_find_by_liobn(liobn);
 
-    tcet = spapr_tce_new_table(DEVICE(sphb), liobn, bus_offset, page_shift,
-                               window_size >> page_shift,
-                               false);
+    spapr_tce_table_enable(tcet, bus_offset, page_shift,
+                           window_size >> page_shift,
+                           false);
 
-    return tcet ? 0 : -1;
+    return 0;
 }
 
 static int spapr_phb_children_reset(Object *child, void *opaque)

@@ -49,13 +49,13 @@ static int spapr_phb_vfio_dma_init_window(sPAPRPHBState *sphb,
                                           uint64_t window_size)
 {
     uint64_t bus_offset = sphb->dma32_window_start;
-    sPAPRTCETable *tcet;
+    sPAPRTCETable *tcet = spapr_tce_find_by_liobn(liobn);
 
-    tcet = spapr_tce_new_table(DEVICE(sphb), liobn, bus_offset, page_shift,
-                               window_size >> page_shift,
-                               true);
+    spapr_tce_table_enable(tcet, bus_offset, page_shift,
+                           window_size >> page_shift,
+                           true);
 
-    return tcet ? 0 : -1;
+    return 0;
 }
 
 static void spapr_phb_vfio_reset(DeviceState *qdev)
