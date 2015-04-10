@@ -577,14 +577,18 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
 
         container->iommu_data.type1.initialized = true;
 
-    } else if (ioctl(fd, VFIO_CHECK_EXTENSION, VFIO_SPAPR_TCE_IOMMU)) {
+    } else if (ioctl(fd, VFIO_CHECK_EXTENSION, VFIO_SPAPR_TCE_IOMMU) ||
+               ioctl(fd, VFIO_CHECK_EXTENSION, VFIO_SPAPR_TCE_v2_IOMMU)) {
+        bool v2 = !!ioctl(fd, VFIO_CHECK_EXTENSION, VFIO_SPAPR_TCE_v2_IOMMU);
+
         ret = ioctl(group->fd, VFIO_GROUP_SET_CONTAINER, &fd);
         if (ret) {
             error_report("vfio: failed to set group container: %m");
             ret = -errno;
             goto free_container_exit;
         }
-        ret = ioctl(fd, VFIO_SET_IOMMU, VFIO_SPAPR_TCE_IOMMU);
+        ret = ioctl(fd, VFIO_SET_IOMMU,
+                v2 ? VFIO_SPAPR_TCE_v2_IOMMU : VFIO_SPAPR_TCE_IOMMU);
         if (ret) {
             error_report("vfio: failed to set iommu for container: %m");
             ret = -errno;
@@ -596,14 +600,20 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
          * when container fd is closed so we do not call it explicitly
          * in this file.
          */
-        ret = ioctl(fd, VFIO_IOMMU_ENABLE);
-        if (ret) {
-            error_report("vfio: failed to enable container: %m");
-            ret = -errno;
-            goto free_container_exit;
+        if (!v2) {
+            ret = ioctl(fd, VFIO_IOMMU_ENABLE);
+            if (ret) {
+                error_report("vfio: failed to enable container: %m");
+                ret = -errno;
+                goto free_container_exit;
+            }
         }
 
-        spapr_memory_listener_register(container);
+        ret = spapr_memory_listener_register(container, v2 ? 2 : 1);
+        if (ret) {
+            error_report("vfio: RAM memory listener initialization failed for container");
+            goto listener_release_exit;
+        }
 
     } else {
         error_report("vfio: No available IOMMU models");

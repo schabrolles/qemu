@@ -17,6 +17,9 @@
  *  along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <sys/ioctl.h>
+#include <linux/vfio.h>
+
 #include "hw/vfio/vfio-common.h"
 #include "qemu/error-report.h"
 #include "trace.h"
@@ -211,16 +214,99 @@ static const MemoryListener vfio_spapr_memory_listener = {
     .region_del = vfio_spapr_listener_region_del,
 };
 
+static void vfio_ram_do_region(VFIOContainer *container,
+                              MemoryRegionSection *section, unsigned long req)
+{
+    int ret;
+    struct vfio_iommu_spapr_register_memory reg = { .argsz = sizeof(reg) };
+
+    if (!memory_region_is_ram(section->mr) ||
+        memory_region_is_skip_dump(section->mr)) {
+        return;
+    }
+
+    if (unlikely((section->offset_within_region & (getpagesize() - 1)))) {
+        error_report("%s received unaligned region", __func__);
+        return;
+    }
+
+    reg.vaddr = (__u64) memory_region_get_ram_ptr(section->mr) +
+        section->offset_within_region;
+    reg.size = ROUND_UP(int128_get64(section->size), TARGET_PAGE_SIZE);
+
+    ret = ioctl(container->fd, req, &reg);
+    trace_vfio_ram_register(_IOC_NR(req) - VFIO_BASE, reg.vaddr, reg.size,
+            ret ? -errno : 0);
+    if (!ret) {
+        return;
+    }
+
+    /*
+     * On the initfn path, store the first error in the container so we
+     * can gracefully fail.  Runtime, there's not much we can do other
+     * than throw a hardware error.
+     */
+    if (!container->iommu_data.spapr.ram_reg_initialized) {
+        if (!container->iommu_data.spapr.ram_reg_error) {
+            container->iommu_data.spapr.ram_reg_error = -errno;
+        }
+    } else {
+        hw_error("vfio: RAM registering failed, unable to continue");
+    }
+}
+
+static void vfio_spapr_ram_listener_region_add(MemoryListener *listener,
+                                               MemoryRegionSection *section)
+{
+    VFIOContainer *container = container_of(listener, VFIOContainer,
+                                            iommu_data.spapr.register_listener);
+    memory_region_ref(section->mr);
+    vfio_ram_do_region(container, section, VFIO_IOMMU_SPAPR_REGISTER_MEMORY);
+}
+
+static void vfio_spapr_ram_listener_region_del(MemoryListener *listener,
+                                               MemoryRegionSection *section)
+{
+    VFIOContainer *container = container_of(listener, VFIOContainer,
+                                            iommu_data.spapr.register_listener);
+    vfio_ram_do_region(container, section, VFIO_IOMMU_SPAPR_UNREGISTER_MEMORY);
+    memory_region_unref(section->mr);
+}
+
+static const MemoryListener vfio_spapr_ram_memory_listener = {
+    .region_add = vfio_spapr_ram_listener_region_add,
+    .region_del = vfio_spapr_ram_listener_region_del,
+};
+
 static void vfio_spapr_listener_release(VFIOContainer *container)
 {
     memory_listener_unregister(&container->iommu_data.spapr.listener);
 }
 
-void spapr_memory_listener_register(VFIOContainer *container)
+static void vfio_spapr_listener_release_v2(VFIOContainer *container)
+{
+    memory_listener_unregister(&container->iommu_data.spapr.listener);
+    vfio_spapr_listener_release(container);
+}
+
+int spapr_memory_listener_register(VFIOContainer *container, int ver)
 {
     container->iommu_data.spapr.listener = vfio_spapr_memory_listener;
     container->iommu_data.release = vfio_spapr_listener_release;
 
     memory_listener_register(&container->iommu_data.spapr.listener,
                              container->space->as);
+    if (ver < 2) {
+        return 0;
+    }
+
+    container->iommu_data.spapr.register_listener =
+            vfio_spapr_ram_memory_listener;
+    container->iommu_data.release = vfio_spapr_listener_release_v2;
+    memory_listener_register(&container->iommu_data.spapr.register_listener,
+                             &address_space_memory);
+
+    container->iommu_data.spapr.ram_reg_initialized = true;
+
+    return container->iommu_data.spapr.ram_reg_error;
 }

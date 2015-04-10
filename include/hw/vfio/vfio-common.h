@@ -71,6 +71,9 @@ typedef struct VFIOType1 {
 
 typedef struct VFIOSPAPR {
     MemoryListener listener;
+    MemoryListener register_listener;
+    int ram_reg_error;
+    bool ram_reg_initialized;
 } VFIOSPAPR;
 
 typedef struct VFIOContainer {
@@ -156,6 +159,6 @@ extern int vfio_dma_unmap(VFIOContainer *container,
                           hwaddr iova, ram_addr_t size);
 bool vfio_listener_skipped_section(MemoryRegionSection *section);
 
-extern void spapr_memory_listener_register(VFIOContainer *container);
+extern int spapr_memory_listener_register(VFIOContainer *container, int ver);
 
 #endif /* !HW_VFIO_VFIO_COMMON_H */
