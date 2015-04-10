@@ -1118,6 +1118,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     int i;
     PCIBus *bus;
     uint64_t msi_window_size = 4096;
+    sPAPRTCETable *tcet;
 
     if (sphb->index != (uint32_t)-1) {
         hwaddr windows_base;
@@ -1267,33 +1268,40 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         }
     }
 
-    if (!info->finish_realize) {
-        error_setg(errp, "finish_realize not defined");
+    info->dma_capabilities_update(sphb);
+    info->dma_init_window(sphb, sphb->dma_liobn, SPAPR_TCE_PAGE_SHIFT,
+                          sphb->dma32_window_size);
+    tcet = spapr_tce_find_by_liobn(sphb->dma_liobn);
+    if (!tcet) {
+        error_setg(errp, "failed to create TCE table");
         return;
     }
-
-    info->finish_realize(sphb, errp);
+    memory_region_add_subregion(&sphb->iommu_root, tcet->bus_offset,
+                                spapr_tce_get_iommu(tcet));
 
     sphb->msi = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, g_free);
 }
 
-static void spapr_phb_finish_realize(sPAPRPHBState *sphb, Error **errp)
+static int spapr_phb_dma_capabilities_update(sPAPRPHBState *sphb)
 {
+    sphb->dma32_window_start = 0;
+    sphb->dma32_window_size = SPAPR_PCI_DMA32_SIZE;
+
+    return 0;
+}
+
+static int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
+                                     uint32_t liobn, uint32_t page_shift,
+                                     uint64_t window_size)
+{
+    uint64_t bus_offset = sphb->dma32_window_start;
     sPAPRTCETable *tcet;
-    uint32_t nb_table;
 
-    nb_table = SPAPR_PCI_DMA32_SIZE >> SPAPR_TCE_PAGE_SHIFT;
-    tcet = spapr_tce_new_table(DEVICE(sphb), sphb->dma_liobn,
-                               0, SPAPR_TCE_PAGE_SHIFT, nb_table, false);
-    if (!tcet) {
-        error_setg(errp, "Unable to create TCE table for %s",
-                   sphb->dtbusname);
-        return ;
-    }
+    tcet = spapr_tce_new_table(DEVICE(sphb), liobn, bus_offset, page_shift,
+                               window_size >> page_shift,
+                               false);
 
-    /* Register default 32bit DMA window */
-    memory_region_add_subregion(&sphb->iommu_root, 0,
-                                spapr_tce_get_iommu(tcet));
+    return tcet ? 0 : -1;
 }
 
 static int spapr_phb_children_reset(Object *child, void *opaque)
@@ -1447,9 +1455,10 @@ static void spapr_phb_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_spapr_pci;
     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
     dc->cannot_instantiate_with_device_add_yet = false;
-    spc->finish_realize = spapr_phb_finish_realize;
     hp->plug = spapr_phb_hot_plug_child;
     hp->unplug = spapr_phb_hot_unplug_child;
+    spc->dma_capabilities_update = spapr_phb_dma_capabilities_update;
+    spc->dma_init_window = spapr_phb_dma_init_window;
 }
 
 static const TypeInfo spapr_phb_info = {

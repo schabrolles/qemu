@@ -27,43 +27,35 @@ static Property spapr_phb_vfio_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void spapr_phb_vfio_finish_realize(sPAPRPHBState *sphb, Error **errp)
+static int spapr_phb_vfio_dma_capabilities_update(sPAPRPHBState *sphb)
 {
-    sPAPRPHBVFIOState *svphb = SPAPR_PCI_VFIO_HOST_BRIDGE(sphb);
     struct vfio_iommu_spapr_tce_info info = { .argsz = sizeof(info) };
     int ret;
-    sPAPRTCETable *tcet;
-    uint32_t liobn = svphb->phb.dma_liobn;
-
-    ret = vfio_container_ioctl(&svphb->phb.iommu_as,
-                               VFIO_CHECK_EXTENSION,
-                               (void *) VFIO_SPAPR_TCE_IOMMU);
-    if (ret != 1) {
-        error_setg_errno(errp, -ret,
-                         "spapr-vfio: SPAPR extension is not supported");
-        return;
-    }
 
     ret = vfio_container_ioctl(&sphb->iommu_as,
                                VFIO_IOMMU_SPAPR_TCE_GET_INFO, &info);
     if (ret) {
-        error_setg_errno(errp, -ret,
-                         "spapr-vfio: get info from container failed");
-        return;
+        return ret;
     }
 
-    tcet = spapr_tce_new_table(DEVICE(sphb), liobn, info.dma32_window_start,
-                               SPAPR_TCE_PAGE_SHIFT,
-                               info.dma32_window_size >> SPAPR_TCE_PAGE_SHIFT,
+    sphb->dma32_window_start = info.dma32_window_start;
+    sphb->dma32_window_size = info.dma32_window_size;
+
+    return ret;
+}
+
+static int spapr_phb_vfio_dma_init_window(sPAPRPHBState *sphb,
+                                          uint32_t liobn, uint32_t page_shift,
+                                          uint64_t window_size)
+{
+    uint64_t bus_offset = sphb->dma32_window_start;
+    sPAPRTCETable *tcet;
+
+    tcet = spapr_tce_new_table(DEVICE(sphb), liobn, bus_offset, page_shift,
+                               window_size >> page_shift,
                                true);
-    if (!tcet) {
-        error_setg(errp, "spapr-vfio: failed to create VFIO TCE table");
-        return;
-    }
 
-    /* Register default 32bit DMA window */
-    memory_region_add_subregion(&sphb->iommu_root, tcet->bus_offset,
-                                spapr_tce_get_iommu(tcet));
+    return tcet ? 0 : -1;
 }
 
 static void spapr_phb_vfio_reset(DeviceState *qdev)
@@ -185,7 +177,8 @@ static void spapr_phb_vfio_class_init(ObjectClass *klass, void *data)
 
     dc->props = spapr_phb_vfio_properties;
     dc->reset = spapr_phb_vfio_reset;
-    spc->finish_realize = spapr_phb_vfio_finish_realize;
+    spc->dma_capabilities_update = spapr_phb_vfio_dma_capabilities_update;
+    spc->dma_init_window = spapr_phb_vfio_dma_init_window;
     spc->eeh_set_option = spapr_phb_vfio_eeh_set_option;
     spc->eeh_get_state = spapr_phb_vfio_eeh_get_state;
     spc->eeh_reset = spapr_phb_vfio_eeh_reset;

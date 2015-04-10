@@ -48,7 +48,10 @@ typedef struct sPAPRPHBVFIOState sPAPRPHBVFIOState;
 struct sPAPRPHBClass {
     PCIHostBridgeClass parent_class;
 
-    void (*finish_realize)(sPAPRPHBState *sphb, Error **errp);
+    int (*dma_capabilities_update)(sPAPRPHBState *sphb);
+    int (*dma_init_window)(sPAPRPHBState *sphb,
+                           uint32_t liobn, uint32_t page_shift,
+                           uint64_t window_size);
     int (*eeh_set_option)(sPAPRPHBState *sphb, unsigned int addr, int option);
     int (*eeh_get_state)(sPAPRPHBState *sphb, int *state);
     int (*eeh_reset)(sPAPRPHBState *sphb, int option);
@@ -89,6 +92,9 @@ struct sPAPRPHBState {
     /* Temporary cache for migration purposes */
     int32_t msi_devs_num;
     spapr_pci_msi_mig *msi_devs;
+
+    uint32_t dma32_window_start;
+    uint32_t dma32_window_size;
 
     QLIST_ENTRY(sPAPRPHBState) list;
 };
