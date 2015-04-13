@@ -35,12 +35,7 @@ static void spapr_phb_vfio_finish_realize(sPAPRPHBState *sphb, Error **errp)
     sPAPRTCETable *tcet;
     uint32_t liobn = svphb->phb.dma_liobn;
 
-    if (svphb->iommugroupid == -1) {
-        error_setg(errp, "Wrong IOMMU group ID %d", svphb->iommugroupid);
-        return;
-    }
-
-    ret = vfio_container_ioctl(&svphb->phb.iommu_as, svphb->iommugroupid,
+    ret = vfio_container_ioctl(&svphb->phb.iommu_as,
                                VFIO_CHECK_EXTENSION,
                                (void *) VFIO_SPAPR_TCE_IOMMU);
     if (ret != 1) {
@@ -49,7 +44,7 @@ static void spapr_phb_vfio_finish_realize(sPAPRPHBState *sphb, Error **errp)
         return;
     }
 
-    ret = vfio_container_ioctl(&svphb->phb.iommu_as, svphb->iommugroupid,
+    ret = vfio_container_ioctl(&sphb->iommu_as,
                                VFIO_IOMMU_SPAPR_TCE_GET_INFO, &info);
     if (ret) {
         error_setg_errno(errp, -ret,
@@ -79,7 +74,6 @@ static void spapr_phb_vfio_reset(DeviceState *qdev)
 static int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
                                          unsigned int addr, int option)
 {
-    sPAPRPHBVFIOState *svphb = SPAPR_PCI_VFIO_HOST_BRIDGE(sphb);
     struct vfio_eeh_pe_op op = { .argsz = sizeof(op) };
     int ret;
 
@@ -116,7 +110,7 @@ static int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
         return RTAS_OUT_PARAM_ERROR;
     }
 
-    ret = vfio_container_ioctl(&svphb->phb.iommu_as, svphb->iommugroupid,
+    ret = vfio_container_ioctl(&sphb->iommu_as,
                                VFIO_EEH_PE_OP, &op);
     if (ret < 0) {
         return RTAS_OUT_HW_ERROR;
@@ -127,12 +121,11 @@ static int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
 
 static int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state)
 {
-    sPAPRPHBVFIOState *svphb = SPAPR_PCI_VFIO_HOST_BRIDGE(sphb);
     struct vfio_eeh_pe_op op = { .argsz = sizeof(op) };
     int ret;
 
     op.op = VFIO_EEH_PE_GET_STATE;
-    ret = vfio_container_ioctl(&svphb->phb.iommu_as, svphb->iommugroupid,
+    ret = vfio_container_ioctl(&sphb->iommu_as,
                                VFIO_EEH_PE_OP, &op);
     if (ret < 0) {
         return RTAS_OUT_PARAM_ERROR;
@@ -144,7 +137,6 @@ static int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state)
 
 static int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option)
 {
-    sPAPRPHBVFIOState *svphb = SPAPR_PCI_VFIO_HOST_BRIDGE(sphb);
     struct vfio_eeh_pe_op op = { .argsz = sizeof(op) };
     int ret;
 
@@ -162,7 +154,7 @@ static int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option)
         return RTAS_OUT_PARAM_ERROR;
     }
 
-    ret = vfio_container_ioctl(&svphb->phb.iommu_as, svphb->iommugroupid,
+    ret = vfio_container_ioctl(&sphb->iommu_as,
                                VFIO_EEH_PE_OP, &op);
     if (ret < 0) {
         return RTAS_OUT_HW_ERROR;
@@ -173,12 +165,11 @@ static int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option)
 
 static int spapr_phb_vfio_eeh_configure(sPAPRPHBState *sphb)
 {
-    sPAPRPHBVFIOState *svphb = SPAPR_PCI_VFIO_HOST_BRIDGE(sphb);
     struct vfio_eeh_pe_op op = { .argsz = sizeof(op) };
     int ret;
 
     op.op = VFIO_EEH_PE_CONFIGURE;
-    ret = vfio_container_ioctl(&svphb->phb.iommu_as, svphb->iommugroupid,
+    ret = vfio_container_ioctl(&sphb->iommu_as,
                                VFIO_EEH_PE_OP, &op);
     if (ret < 0) {
         return RTAS_OUT_PARAM_ERROR;
