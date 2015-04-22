@@ -1280,7 +1280,7 @@ int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
 
     if (sphb->ddw_enabled) {
         if (sphb->has_vfio) {
-            ret = spapr_phb_vfio_dma_init_window(sphb,
+            ret = spapr_phb_vfio_dma_init_window(sphb, tcet,
                                                  page_shift, window_size,
                                                  &bus_offset);
             if (ret) {

@@ -204,6 +204,9 @@ static void spapr_tce_table_do_enable(sPAPRTCETable *tcet)
                                               tcet->page_shift,
                                               &tcet->fd,
                                               tcet->vfio_accel);
+        if (!tcet->table) {
+            tcet->vfio_accel = false;
+        }
     }
 
     if (!tcet->table) {

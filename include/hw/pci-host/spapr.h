@@ -149,6 +149,7 @@ int spapr_phb_dma_reset(sPAPRPHBState *sphb);
 
 int spapr_phb_vfio_dma_capabilities_update(sPAPRPHBState *sphb);
 int spapr_phb_vfio_dma_init_window(sPAPRPHBState *sphb,
+                                   sPAPRTCETable *tcet,
                                    uint32_t page_shift,
                                    uint64_t window_size,
                                    uint64_t *bus_offset);
