@@ -428,6 +428,9 @@ static void spapr_hotplug_req_event(sPAPRDRConnector *drc, uint8_t hp_action)
     case SPAPR_DR_CONNECTOR_TYPE_PCI:
         hp->hotplug_type = RTAS_LOG_V6_HP_TYPE_PCI;
         break;
+    case SPAPR_DR_CONNECTOR_TYPE_CPU:
+        hp->hotplug_type = RTAS_LOG_V6_HP_TYPE_CPU;
+        break;
     case SPAPR_DR_CONNECTOR_TYPE_LMB:
         hp->hotplug_type = RTAS_LOG_V6_HP_TYPE_MEMORY;
         break;
