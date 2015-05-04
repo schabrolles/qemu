@@ -1317,6 +1317,17 @@ int object_child_foreach(Object *obj, int (*fn)(Object *child, void *opaque),
                          void *opaque);
 
 /**
+ * object_has_no_children:
+ * @obj: the object which will be checked for children
+ *
+ * Navigate the properties list of the @obj and check for any child
+ * property.
+ *
+ * Returns: true if no child properties are found, else returns false.
+ */
+bool object_has_no_children(Object *obj);
+
+/**
  * container_get:
  * @root: root of the #path, e.g., object_get_root()
  * @path: path to the container

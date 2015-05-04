@@ -683,6 +683,18 @@ int object_child_foreach(Object *obj, int (*fn)(Object *child, void *opaque),
     return ret;
 }
 
+bool object_has_no_children(Object *obj)
+{
+    ObjectProperty *prop;
+
+    QTAILQ_FOREACH(prop, &obj->properties, node) {
+        if (object_property_is_child(prop)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void object_class_get_list_tramp(ObjectClass *klass, void *opaque)
 {
     GSList **list = opaque;
