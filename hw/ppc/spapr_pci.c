@@ -23,6 +23,7 @@
  * THE SOFTWARE.
  */
 #include "hw/hw.h"
+#include "hw/sysbus.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
@@ -35,6 +36,7 @@
 #include "qemu/error-report.h"
 #include "qapi/qmp/qerror.h"
 
+#include "hw/pci/pci_bridge.h"
 #include "hw/pci/pci_bus.h"
 #include "hw/ppc/spapr_drc.h"
 #include "sysemu/device_tree.h"
@@ -909,7 +911,10 @@ static int spapr_populate_pci_child_dt(PCIDevice *dev, void *fdt, int offset,
      * processed by OF beforehand
      */
     _FDT(fdt_setprop_string(fdt, offset, "name", "pci"));
-    _FDT(fdt_setprop(fdt, offset, "ibm,loc-code", drc_name, strlen(drc_name)));
+    if (drc_name) {
+        _FDT(fdt_setprop(fdt, offset, "ibm,loc-code", drc_name,
+                         strlen(drc_name)));
+    }
     _FDT(fdt_setprop_cell(fdt, offset, "ibm,my-drc-index", drc_index));
 
     _FDT(fdt_setprop_cell(fdt, offset, "#address-cells",
@@ -965,10 +970,6 @@ static void spapr_phb_add_pci_device(sPAPRDRConnector *drc,
     void *fdt = NULL;
     int fdt_start_offset = 0;
 
-    /* boot-time devices get their device tree node created by SLOF, but for
-     * hotplugged devices we need QEMU to generate it so the guest can fetch
-     * it via RTAS
-     */
     if (dev->hotplugged) {
         fdt = spapr_create_pci_child_dt(phb, pdev, drc_index, drc_name,
                                         &fdt_start_offset);
@@ -1536,6 +1537,89 @@ PCIHostState *spapr_create_phb(sPAPREnvironment *spapr, int index)
 #define b_fff(x)        b_x((x), 8, 3)  /* function number */
 #define b_rrrrrrrr(x)   b_x((x), 0, 8)  /* register number */
 
+typedef struct sPAPRFDT {
+    void *fdt;
+    int node_off;
+    uint32_t index;
+} sPAPRFDT;
+
+static void spapr_populate_pci_devices_dt(PCIBus *bus, PCIDevice *pdev,
+                                          void *opaque)
+{
+    PCIBus *sec_bus;
+    sPAPRFDT *p = opaque;
+    int ret, offset;
+    int slot = PCI_SLOT(pdev->devfn);
+    int func = PCI_FUNC(pdev->devfn);
+    char nodename[512];
+    sPAPRFDT s_fdt;
+
+    if (func) {
+        sprintf(nodename, "pci@%d,%d", slot, func);
+    } else {
+        sprintf(nodename, "pci@%d", slot);
+    }
+    offset = fdt_add_subnode(p->fdt, p->node_off, nodename);
+    ret = spapr_populate_pci_child_dt(pdev, p->fdt, offset, p->index, 0, NULL);
+    g_assert(!ret);
+
+    if ((pci_default_read_config(pdev, PCI_HEADER_TYPE, 1) !=
+         PCI_HEADER_TYPE_BRIDGE)) {
+        return;
+    }
+
+    sec_bus = pci_bridge_get_sec_bus(PCI_BRIDGE(pdev));
+    if (!sec_bus) {
+        return;
+    }
+
+    s_fdt.fdt = p->fdt;
+    s_fdt.node_off = offset;
+    s_fdt.index = p->index;
+    pci_for_each_device(sec_bus, pci_bus_num(sec_bus),
+                        spapr_populate_pci_devices_dt,
+                        &s_fdt);
+}
+
+static void spapr_phb_pci_enumerate_bridge(PCIBus *bus, PCIDevice *pdev,
+                                           void *opaque)
+{
+    unsigned short *bus_no = (unsigned short *) opaque;
+    unsigned short primary = *bus_no;
+    unsigned short secondary;
+    unsigned short subordinate = 0xff;
+
+    if ((pci_default_read_config(pdev, PCI_HEADER_TYPE, 1) ==
+         PCI_HEADER_TYPE_BRIDGE)) {
+        PCIBus *sec_bus = pci_bridge_get_sec_bus(PCI_BRIDGE(pdev));
+        secondary = *bus_no + 1;
+        pci_default_write_config(pdev, PCI_PRIMARY_BUS, primary, 1);
+        pci_default_write_config(pdev, PCI_SECONDARY_BUS, secondary, 1);
+        pci_default_write_config(pdev, PCI_SUBORDINATE_BUS, secondary, 1);
+        *bus_no = *bus_no + 1;
+        if (sec_bus) {
+            pci_default_write_config(pdev, PCI_PRIMARY_BUS, primary, 1);
+            pci_default_write_config(pdev, PCI_SECONDARY_BUS, secondary, 1);
+            pci_default_write_config(pdev, PCI_SUBORDINATE_BUS, subordinate, 1);
+            pci_for_each_device(sec_bus, pci_bus_num(sec_bus),
+                                spapr_phb_pci_enumerate_bridge,
+                                bus_no);
+            pci_default_write_config(pdev, PCI_SUBORDINATE_BUS, *bus_no, 1);
+        }
+    }
+}
+
+static void spapr_phb_pci_enumerate(sPAPRPHBState *phb)
+{
+    PCIBus *bus = PCI_HOST_BRIDGE(phb)->bus;
+    unsigned short bus_no = 0;
+
+    pci_for_each_device(bus, pci_bus_num(bus),
+                        spapr_phb_pci_enumerate_bridge,
+                        &bus_no);
+
+}
+
 int spapr_populate_pci_dt(sPAPRPHBState *phb,
                           uint32_t xics_phandle,
                           void *fdt)
@@ -1584,6 +1668,8 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
         cpu_to_be32(RTAS_IBM_RESET_PE_DMA_WINDOW)
     };
     sPAPRTCETable *tcet;
+    PCIBus *bus = PCI_HOST_BRIDGE(phb)->bus;
+    sPAPRFDT s_fdt;
 
     /* Start populating the FDT */
     sprintf(nodename, "pci@%" PRIx64, phb->buid);
@@ -1640,6 +1726,18 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     spapr_dma_dt(fdt, bus_off, "ibm,dma-window",
                  tcet->liobn, tcet->bus_offset,
                  tcet->nb_table << tcet->page_shift);
+
+    /* Walk the bridges and program the bus numbers*/
+    spapr_phb_pci_enumerate(phb);
+    _FDT(fdt_setprop_cell(fdt, bus_off, "qemu,phb-enumerated", 0x1));
+
+    /* Populate tree nodes with PCI devices attached */
+    s_fdt.fdt = fdt;
+    s_fdt.node_off = bus_off;
+    s_fdt.index = phb->index;
+    pci_for_each_device(bus, pci_bus_num(bus),
+                        spapr_populate_pci_devices_dt,
+                        &s_fdt);
 
     ret = spapr_drc_populate_dt(fdt, bus_off, OBJECT(phb),
                                 SPAPR_DR_CONNECTOR_TYPE_PCI);
