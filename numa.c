@@ -53,6 +53,62 @@ static int max_numa_nodeid; /* Highest specified NUMA node ID, plus one.
 int nb_numa_nodes;
 NodeInfo numa_info[MAX_NODES];
 
+/*
+ * Given an address, return the index of the NUMA node to which the
+ * address belongs to.
+ */
+uint32_t get_numa_node(ram_addr_t addr, Error **errp)
+{
+    uint32_t i;
+    MemoryDeviceInfoList *info_list = NULL;
+    MemoryDeviceInfoList **prev = &info_list;
+    MemoryDeviceInfoList *info;
+
+    for (i = 0; i < nb_numa_nodes; i++) {
+        if (addr >= numa_info[i].mem_start && addr < numa_info[i].mem_end) {
+            return i;
+        }
+    }
+
+    /*
+     * If this @addr falls under cold or hotplugged memory regions,
+     * check there too.
+     */
+    qmp_pc_dimm_device_list(qdev_get_machine(), &prev);
+    for (info = info_list; info; info = info->next) {
+        MemoryDeviceInfo *value = info->value;
+
+        if (value) {
+            switch (value->kind) {
+            case MEMORY_DEVICE_INFO_KIND_DIMM:
+                if (addr >= value->dimm->addr &&
+                        addr < (value->dimm->addr + value->dimm->size)) {
+                    qapi_free_MemoryDeviceInfoList(info_list);
+                    return value->dimm->node;
+                }
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    qapi_free_MemoryDeviceInfoList(info_list);
+    error_setg(errp, "Address 0x" RAM_ADDR_FMT " doesn't belong to any NUMA node", addr);
+
+    return -1;
+}
+
+static void numa_set_mem_address(int nodenr)
+{
+    if (nodenr) {
+        numa_info[nodenr].mem_start = numa_info[nodenr-1].mem_end;
+    } else {
+        numa_info[nodenr].mem_start = 0;
+    }
+    numa_info[nodenr].mem_end = numa_info[nodenr].mem_start +
+                                   numa_info[nodenr].node_mem;
+}
+
 static void numa_node_parse(NumaNodeOptions *node, QemuOpts *opts, Error **errp)
 {
     uint16_t nodenr;
@@ -273,6 +329,10 @@ void parse_numa_opts(MachineClass *mc)
                          " should equal RAM size (0x" RAM_ADDR_FMT ")",
                          numa_total, ram_size);
             exit(1);
+        }
+
+        for (i = 0; i < nb_numa_nodes; i++) {
+            numa_set_mem_address(i);
         }
 
         for (i = 0; i < nb_numa_nodes; i++) {

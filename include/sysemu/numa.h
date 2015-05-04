@@ -15,11 +15,14 @@ typedef struct node_info {
     DECLARE_BITMAP(node_cpu, MAX_CPUMASK_BITS);
     struct HostMemoryBackend *node_memdev;
     bool present;
+    ram_addr_t mem_start;
+    ram_addr_t mem_end;
 } NodeInfo;
 extern NodeInfo numa_info[MAX_NODES];
 void parse_numa_opts(MachineClass *mc);
 void numa_post_machine_init(void);
 void query_numa_node_mem(uint64_t node_mem[]);
 extern QemuOptsList qemu_numa_opts;
+uint32_t get_numa_node(ram_addr_t addr, Error **errp);
 
 #endif
