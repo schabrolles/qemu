@@ -769,7 +769,7 @@ static void spapr_finalize_fdt(sPAPREnvironment *spapr,
     }
 
     /* RTAS */
-    ret = spapr_rtas_device_tree_setup(fdt, rtas_addr, rtas_size);
+    ret = spapr_rtas_device_tree_setup(spapr, fdt, rtas_addr, rtas_size);
     if (ret < 0) {
         fprintf(stderr, "Couldn't set up RTAS device tree properties\n");
     }
@@ -1526,6 +1526,7 @@ static void ppc_spapr_init(MachineState *machine)
 
     /* allocate RAM */
     spapr->ram_limit = ram_size;
+    spapr->maxram_limit = machine->maxram_size;
     memory_region_allocate_system_memory(ram, NULL, "ppc_spapr.ram",
                                          spapr->ram_limit);
     memory_region_add_subregion(sysmem, 0, ram);

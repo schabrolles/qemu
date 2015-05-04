@@ -21,6 +21,7 @@ typedef struct sPAPREnvironment {
     DeviceState *rtc;
 
     hwaddr ram_limit;
+    hwaddr maxram_limit;
     void *htab;
     uint32_t htab_shift;
     hwaddr rma_size;
@@ -513,8 +514,8 @@ void spapr_rtas_register(int token, const char *name, spapr_rtas_fn fn);
 target_ulong spapr_rtas_call(PowerPCCPU *cpu, sPAPREnvironment *spapr,
                              uint32_t token, uint32_t nargs, target_ulong args,
                              uint32_t nret, target_ulong rets);
-int spapr_rtas_device_tree_setup(void *fdt, hwaddr rtas_addr,
-                                 hwaddr rtas_size);
+int spapr_rtas_device_tree_setup(sPAPREnvironment *spapr, void *fdt,
+                                 hwaddr rtas_addr, hwaddr rtas_size);
 
 #define SPAPR_TCE_PAGE_SHIFT   12
 #define SPAPR_TCE_PAGE_SIZE    (1ULL << SPAPR_TCE_PAGE_SHIFT)
@@ -562,6 +563,8 @@ struct sPAPREventLogEntry {
     void *data;
     QTAILQ_ENTRY(sPAPREventLogEntry) next;
 };
+
+#define SPAPR_MEMORY_BLOCK_SIZE (1 << 28) /* 256MB */
 
 void spapr_events_init(sPAPREnvironment *spapr);
 void spapr_events_fdt_skel(void *fdt, uint32_t epow_irq);
