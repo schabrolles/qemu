@@ -122,6 +122,11 @@ static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
     mcc->parent_realize(dev, errp);
 }
 
+static void mb_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void mb_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -190,6 +195,7 @@ static const TypeInfo mb_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(MicroBlazeCPU),
     .instance_init = mb_cpu_initfn,
+    .instance_finalize = mb_cpu_finalize,
     .class_size = sizeof(MicroBlazeCPUClass),
     .class_init = mb_cpu_class_init,
 };

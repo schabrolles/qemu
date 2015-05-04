@@ -673,6 +673,14 @@ void cpu_watchpoint_remove_all(CPUState *cpu, int mask);
 void QEMU_NORETURN cpu_abort(CPUState *cpu, const char *fmt, ...)
     GCC_FMT_ATTR(2, 3);
 
+#ifndef CONFIG_USER_ONLY
+void cpu_exec_exit(CPUState *cpu);
+#else
+static inline void cpu_exec_exit(CPUState *cpu)
+{
+}
+#endif
+
 #ifdef CONFIG_SOFTMMU
 extern const struct VMStateDescription vmstate_cpu_common;
 #else

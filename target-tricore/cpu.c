@@ -80,6 +80,10 @@ static void tricore_cpu_realizefn(DeviceState *dev, Error **errp)
     tcc->parent_realize(dev, errp);
 }
 
+static void tricore_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
 
 static void tricore_cpu_initfn(Object *obj)
 {
@@ -180,6 +184,7 @@ static const TypeInfo tricore_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(TriCoreCPU),
     .instance_init = tricore_cpu_initfn,
+    .instance_finalize = tricore_cpu_finalize,
     .abstract = true,
     .class_size = sizeof(TriCoreCPUClass),
     .class_init = tricore_cpu_class_init,

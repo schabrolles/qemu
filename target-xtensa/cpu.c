@@ -104,6 +104,11 @@ static void xtensa_cpu_realizefn(DeviceState *dev, Error **errp)
     xcc->parent_realize(dev, errp);
 }
 
+static void xtensa_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void xtensa_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -162,6 +167,7 @@ static const TypeInfo xtensa_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(XtensaCPU),
     .instance_init = xtensa_cpu_initfn,
+    .instance_finalize = xtensa_cpu_finalize,
     .abstract = true,
     .class_size = sizeof(XtensaCPUClass),
     .class_init = xtensa_cpu_class_init,

@@ -454,6 +454,7 @@ static void arm_cpu_finalizefn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
     g_hash_table_destroy(cpu->cp_regs);
+    cpu_exec_exit(CPU(obj));
 }
 
 static void arm_cpu_realizefn(DeviceState *dev, Error **errp)

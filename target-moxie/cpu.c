@@ -59,6 +59,11 @@ static void moxie_cpu_realizefn(DeviceState *dev, Error **errp)
     mcc->parent_realize(dev, errp);
 }
 
+static void moxie_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void moxie_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -160,6 +165,7 @@ static const TypeInfo moxie_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(MoxieCPU),
     .instance_init = moxie_cpu_initfn,
+    .instance_finalize = moxie_cpu_finalize,
     .class_size = sizeof(MoxieCPUClass),
     .class_init = moxie_cpu_class_init,
 };

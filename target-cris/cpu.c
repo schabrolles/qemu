@@ -161,6 +161,11 @@ static void cris_cpu_set_irq(void *opaque, int irq, int level)
 }
 #endif
 
+static void cris_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void cris_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -299,6 +304,7 @@ static const TypeInfo cris_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(CRISCPU),
     .instance_init = cris_cpu_initfn,
+    .instance_finalize = cris_cpu_finalize,
     .abstract = true,
     .class_size = sizeof(CRISCPUClass),
     .class_init = cris_cpu_class_init,

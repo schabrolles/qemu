@@ -530,21 +530,52 @@ void tcg_cpu_address_space_init(CPUState *cpu, AddressSpace *as)
 }
 #endif
 
+#ifndef CONFIG_USER_ONLY
+static DECLARE_BITMAP(cpu_index_map, MAX_CPUMASK_BITS);
+
+static int cpu_get_free_index(Error **errp)
+{
+    int cpu = find_first_zero_bit(cpu_index_map, max_cpus);
+
+    if (cpu == max_cpus) {
+        error_setg(errp, "Trying to use more CPUs than allowed max of %d\n",
+                    max_cpus);
+        return max_cpus;
+    } else {
+        bitmap_set(cpu_index_map, cpu, 1);
+        return cpu;
+    }
+}
+
+void cpu_exec_exit(CPUState *cpu)
+{
+    bitmap_clear(cpu_index_map, cpu->cpu_index, 1);
+}
+#endif
+
 void cpu_exec_init(CPUArchState *env, Error **errp)
 {
     CPUState *cpu = ENV_GET_CPU(env);
     CPUClass *cc = CPU_GET_CLASS(cpu);
-    CPUState *some_cpu;
     int cpu_index;
-
 #if defined(CONFIG_USER_ONLY)
+    CPUState *some_cpu;
+
     cpu_list_lock();
-#endif
     cpu_index = 0;
     CPU_FOREACH(some_cpu) {
         cpu_index++;
     }
     cpu->cpu_index = cpu_index;
+#else
+    Error *local_err = NULL;
+
+    cpu_index = cpu->cpu_index = cpu_get_free_index(&local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+#endif
     cpu->numa_node = 0;
     QTAILQ_INIT(&cpu->breakpoints);
     QTAILQ_INIT(&cpu->watchpoints);

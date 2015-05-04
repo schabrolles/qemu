@@ -250,6 +250,11 @@ static const TypeInfo ev68_cpu_type_info = {
     .parent = TYPE("ev67"),
 };
 
+static void alpha_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void alpha_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -305,6 +310,7 @@ static const TypeInfo alpha_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(AlphaCPU),
     .instance_init = alpha_cpu_initfn,
+    .instance_finalize = alpha_cpu_finalize,
     .abstract = true,
     .class_size = sizeof(AlphaCPUClass),
     .class_init = alpha_cpu_class_init,

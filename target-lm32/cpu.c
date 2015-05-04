@@ -143,6 +143,11 @@ static void lm32_cpu_realizefn(DeviceState *dev, Error **errp)
     lcc->parent_realize(dev, errp);
 }
 
+static void lm32_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void lm32_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -294,6 +299,7 @@ static const TypeInfo lm32_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(LM32CPU),
     .instance_init = lm32_cpu_initfn,
+    .instance_finalize = lm32_cpu_finalize,
     .abstract = true,
     .class_size = sizeof(LM32CPUClass),
     .class_init = lm32_cpu_class_init,

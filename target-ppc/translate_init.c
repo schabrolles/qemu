@@ -9671,6 +9671,11 @@ static bool ppc_cpu_is_big_endian(CPUState *cs)
 }
 #endif
 
+static void ppc_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void ppc_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -9784,6 +9789,7 @@ static const TypeInfo ppc_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(PowerPCCPU),
     .instance_init = ppc_cpu_initfn,
+    .instance_finalize = ppc_cpu_finalize,
     .abstract = true,
     .class_size = sizeof(PowerPCCPUClass),
     .class_init = ppc_cpu_class_init,

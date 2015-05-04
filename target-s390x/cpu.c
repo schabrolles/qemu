@@ -214,6 +214,7 @@ static void s390_cpu_finalize(Object *obj)
 
     qemu_unregister_reset(s390_cpu_machine_reset_cb, cpu);
 #endif
+    cpu_exec_exit(CPU(obj));
 }
 
 #if !defined(CONFIG_USER_ONLY)

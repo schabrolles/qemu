@@ -240,6 +240,11 @@ static void superh_cpu_realizefn(DeviceState *dev, Error **errp)
     scc->parent_realize(dev, errp);
 }
 
+static void superh_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void superh_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -296,6 +301,7 @@ static const TypeInfo superh_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(SuperHCPU),
     .instance_init = superh_cpu_initfn,
+    .instance_finalize = superh_cpu_finalize,
     .abstract = true,
     .class_size = sizeof(SuperHCPUClass),
     .class_init = superh_cpu_class_init,

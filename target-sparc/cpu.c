@@ -815,6 +815,7 @@ static void sparc_cpu_uninitfn(Object *obj)
     CPUSPARCState *env = &cpu->env;
 
     g_free(env->def);
+    cpu_exec_exit(CPU(obj));
 }
 
 static void sparc_cpu_class_init(ObjectClass *oc, void *data)

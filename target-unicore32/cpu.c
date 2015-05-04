@@ -103,6 +103,11 @@ static void uc32_cpu_realizefn(DeviceState *dev, Error **errp)
     ucc->parent_realize(dev, errp);
 }
 
+static void uc32_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void uc32_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -174,6 +179,7 @@ static const TypeInfo uc32_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(UniCore32CPU),
     .instance_init = uc32_cpu_initfn,
+    .instance_finalize = uc32_cpu_finalize,
     .abstract = true,
     .class_size = sizeof(UniCore32CPUClass),
     .class_init = uc32_cpu_class_init,

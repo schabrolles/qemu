@@ -160,6 +160,11 @@ static void m68k_cpu_realizefn(DeviceState *dev, Error **errp)
     mcc->parent_realize(dev, errp);
 }
 
+static void m68k_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void m68k_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -231,6 +236,7 @@ static const TypeInfo m68k_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(M68kCPU),
     .instance_init = m68k_cpu_initfn,
+    .instance_finalize = m68k_cpu_finalize,
     .abstract = true,
     .class_size = sizeof(M68kCPUClass),
     .class_init = m68k_cpu_class_init,

@@ -85,6 +85,11 @@ static void openrisc_cpu_realizefn(DeviceState *dev, Error **errp)
     occ->parent_realize(dev, errp);
 }
 
+static void openrisc_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void openrisc_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -198,6 +203,7 @@ static const TypeInfo openrisc_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(OpenRISCCPU),
     .instance_init = openrisc_cpu_initfn,
+    .instance_finalize = openrisc_cpu_finalize,
     .abstract = true,
     .class_size = sizeof(OpenRISCCPUClass),
     .class_init = openrisc_cpu_class_init,

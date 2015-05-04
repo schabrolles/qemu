@@ -108,6 +108,11 @@ static void mips_cpu_realizefn(DeviceState *dev, Error **errp)
     mcc->parent_realize(dev, errp);
 }
 
+static void mips_cpu_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
+}
+
 static void mips_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -160,6 +165,7 @@ static const TypeInfo mips_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(MIPSCPU),
     .instance_init = mips_cpu_initfn,
+    .instance_finalize = mips_cpu_finalize,
     .abstract = false,
     .class_size = sizeof(MIPSCPUClass),
     .class_init = mips_cpu_class_init,
