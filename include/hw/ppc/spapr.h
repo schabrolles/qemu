@@ -35,6 +35,7 @@ typedef struct sPAPREnvironment {
     struct PPCTimebase tb;
     bool has_graphics;
     bool dr_lmb_enabled; /* hotplug / dynamic-reconfiguration of LMBs */
+    bool dr_cpu_enabled; /* hotplug / dynamic-reconfiguration of CPUs */
 
     uint32_t check_exception_irq;
     Notifier epow_notifier;
