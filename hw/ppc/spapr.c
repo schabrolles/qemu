@@ -90,11 +90,27 @@
 
 #define HTAB_SIZE(spapr)        (1ULL << ((spapr)->htab_shift))
 
+typedef struct sPAPRMachineClass sPAPRMachineClass;
 typedef struct sPAPRMachineState sPAPRMachineState;
 
 #define TYPE_SPAPR_MACHINE      "spapr-machine"
 #define SPAPR_MACHINE(obj) \
     OBJECT_CHECK(sPAPRMachineState, (obj), TYPE_SPAPR_MACHINE)
+#define SPAPR_MACHINE_GET_CLASS(obj) \
+        OBJECT_GET_CLASS(sPAPRMachineClass, obj, TYPE_SPAPR_MACHINE)
+#define SPAPR_MACHINE_CLASS(klass) \
+        OBJECT_CLASS_CHECK(sPAPRMachineClass, klass, TYPE_SPAPR_MACHINE)
+
+/**
+ * sPAPRMachineClass:
+ */
+struct sPAPRMachineClass {
+    /*< private >*/
+    MachineClass parent_class;
+
+    /*< public >*/
+    bool dr_lmb_enabled; /* enable dynamic-reconfig/hotplug of LMBs */
+};
 
 /**
  * sPAPRMachineState:
@@ -1388,6 +1404,7 @@ static void spapr_boot_set(void *opaque, const char *boot_device,
 /* pSeries LPAR / sPAPR hardware init */
 static void ppc_spapr_init(MachineState *machine)
 {
+    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(machine);
     ram_addr_t ram_size = machine->ram_size;
     const char *cpu_model = machine->cpu_model;
     const char *kernel_filename = machine->kernel_filename;
@@ -1468,6 +1485,8 @@ static void ppc_spapr_init(MachineState *machine)
     spapr->icp = xics_system_init(machine,
                                   smp_cpus * kvmppc_smt_threads() / smp_threads,
                                   XICS_IRQS);
+
+    spapr->dr_lmb_enabled = smc->dr_lmb_enabled;
 
     /* init CPUs */
     if (cpu_model == NULL) {
@@ -1795,6 +1814,7 @@ static void spapr_nmi(NMIState *n, int cpu_index, Error **errp)
 static void spapr_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
+    sPAPRMachineClass *smc = SPAPR_MACHINE_CLASS(oc);
     FWPathProviderClass *fwc = FW_PATH_PROVIDER_CLASS(oc);
     NMIClass *nc = NMI_CLASS(oc);
 
@@ -1807,6 +1827,7 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
     mc->default_ram_size = 512 * M_BYTE;
     mc->kvm_type = spapr_kvm_type;
     mc->has_dynamic_sysbus = true;
+    smc->dr_lmb_enabled = false;
 
     fwc->get_dev_path = spapr_get_fw_dev_path;
     nc->nmi_monitor_handler = spapr_nmi;
@@ -1818,6 +1839,7 @@ static const TypeInfo spapr_machine_info = {
     .abstract      = true,
     .instance_size = sizeof(sPAPRMachineState),
     .instance_init = spapr_machine_initfn,
+    .class_size    = sizeof(sPAPRMachineClass),
     .class_init    = spapr_machine_class_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_FW_PATH_PROVIDER },
@@ -1911,11 +1933,13 @@ static const TypeInfo spapr_machine_2_3_info = {
 static void spapr_machine_2_4_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
+    sPAPRMachineClass *smc = SPAPR_MACHINE_CLASS(oc);
 
     mc->name = "pseries-2.4";
     mc->desc = "pSeries Logical Partition (PAPR compliant) v2.4";
     mc->alias = "pseries";
     mc->is_default = 1;
+    smc->dr_lmb_enabled = true;
 }
 
 static const TypeInfo spapr_machine_2_4_info = {
