@@ -2928,6 +2928,15 @@ static mon_cmd_t info_cmds[] = {
         .help       = "show memory devices",
         .mhandler.cmd = hmp_info_memory_devices,
     },
+#if defined(TARGET_PPC64)
+    {
+        .name       = "spapr-cpu-sockets",
+        .args_type  = "",
+        .params     = "",
+        .help       = "show sPAPR CPU devices",
+        .mhandler.cmd = hmp_info_spapr_cpu_sockets,
+    },
+#endif
     {
         .name       = NULL,
     },
