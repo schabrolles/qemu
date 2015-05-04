@@ -708,6 +708,70 @@ static AddressSpace *spapr_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
     return &phb->iommu_as;
 }
 
+static bool spapr_phb_vfio_get_devspec_value(PCIDevice *pdev, char **value)
+{
+    char *host;
+    char path[PATH_MAX];
+
+    host = object_property_get_str(OBJECT(pdev), "host", NULL);
+    if (!host) {
+        return false;
+    }
+
+    snprintf(path, sizeof(path), "/sys/bus/pci/devices/%s/devspec", host);
+    g_free(host);
+
+    return g_file_get_contents(path, value, NULL, NULL);
+}
+
+static char *spapr_phb_vfio_get_loc_code(sPAPRPHBState *sphb,  PCIDevice *pdev)
+{
+    char path[PATH_MAX], *buf = NULL;
+
+    /* We have a vfio host bridge lets get the path. */
+    if (!spapr_phb_vfio_get_devspec_value(pdev, &buf)) {
+        return NULL;
+    }
+
+    snprintf(path, sizeof(path), "/proc/device-tree%s/ibm,loc-code", buf);
+    g_free(buf);
+
+    if (g_file_get_contents(path, &buf, NULL, NULL)) {
+        return buf;
+    } else {
+        return NULL;
+    }
+}
+
+static char *spapr_phb_get_loc_code(sPAPRPHBState *sphb,  PCIDevice *pdev)
+{
+    char *path = g_malloc(PATH_MAX);
+
+    if (!path) {
+        return NULL;
+    }
+
+    /*
+     * For non-vfio devices and failures make up the location code out
+     * of the name, slot and function.
+     *
+     *       qemu_<name>:<phb-index>:<slot>.<fn>
+     */
+    snprintf(path, PATH_MAX, "qemu_%s:%02d:%02d.%1d", pdev->name,
+             sphb->index, PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
+    return path;
+}
+
+
+static char *spapr_ibm_get_loc_code(sPAPRPHBState *sphb, PCIDevice *pdev)
+{
+    if (object_dynamic_cast(OBJECT(pdev), "vfio-pci") != NULL) {
+        return spapr_phb_vfio_get_loc_code(sphb, pdev);
+    } else {
+        return spapr_phb_get_loc_code(sphb, pdev);
+    }
+}
+
 /* Macros to operate with address in OF binding to PCI */
 #define b_x(x, p, l)    (((x) & ((1<<(l))-1)) << (p))
 #define b_n(x)          b_x((x), 31, 1) /* 0 if relocatable */
@@ -845,12 +909,12 @@ static void populate_resource_props(PCIDevice *d, ResourceProps *rp)
 }
 
 static int spapr_populate_pci_child_dt(PCIDevice *dev, void *fdt, int offset,
-                                       int phb_index, int drc_index,
-                                       const char *drc_name)
+                                       sPAPRPHBState *phb, int drc_index)
 {
     ResourceProps rp;
     bool is_bridge = false;
     int pci_status;
+    char *buf = NULL;
 
     if (pci_default_read_config(dev, PCI_HEADER_TYPE, 1) ==
         PCI_HEADER_TYPE_BRIDGE) {
@@ -911,9 +975,10 @@ static int spapr_populate_pci_child_dt(PCIDevice *dev, void *fdt, int offset,
      * processed by OF beforehand
      */
     _FDT(fdt_setprop_string(fdt, offset, "name", "pci"));
-    if (drc_name) {
-        _FDT(fdt_setprop(fdt, offset, "ibm,loc-code", drc_name,
-                         strlen(drc_name)));
+    buf = spapr_ibm_get_loc_code(phb, dev);
+    if (buf) {
+        _FDT(fdt_setprop_string(fdt, offset, "ibm,loc-code", buf));
+        g_free(buf);
     }
     _FDT(fdt_setprop_cell(fdt, offset, "ibm,my-drc-index", drc_index));
 
@@ -950,8 +1015,7 @@ static void *spapr_create_pci_child_dt(sPAPRPHBState *phb, PCIDevice *dev,
         sprintf(nodename, "pci@%d", slot);
     }
     offset = fdt_add_subnode(fdt, 0, nodename);
-    ret = spapr_populate_pci_child_dt(dev, fdt, offset, phb->index, drc_index,
-                                      drc_name);
+    ret = spapr_populate_pci_child_dt(dev, fdt, offset, phb, drc_index);
     g_assert(!ret);
 
     *dt_offset = offset;
@@ -1540,7 +1604,7 @@ PCIHostState *spapr_create_phb(sPAPREnvironment *spapr, int index)
 typedef struct sPAPRFDT {
     void *fdt;
     int node_off;
-    uint32_t index;
+    sPAPRPHBState *sphb;
 } sPAPRFDT;
 
 static void spapr_populate_pci_devices_dt(PCIBus *bus, PCIDevice *pdev,
@@ -1560,7 +1624,7 @@ static void spapr_populate_pci_devices_dt(PCIBus *bus, PCIDevice *pdev,
         sprintf(nodename, "pci@%d", slot);
     }
     offset = fdt_add_subnode(p->fdt, p->node_off, nodename);
-    ret = spapr_populate_pci_child_dt(pdev, p->fdt, offset, p->index, 0, NULL);
+    ret = spapr_populate_pci_child_dt(pdev, p->fdt, offset, p->sphb, 0);
     g_assert(!ret);
 
     if ((pci_default_read_config(pdev, PCI_HEADER_TYPE, 1) !=
@@ -1575,7 +1639,7 @@ static void spapr_populate_pci_devices_dt(PCIBus *bus, PCIDevice *pdev,
 
     s_fdt.fdt = p->fdt;
     s_fdt.node_off = offset;
-    s_fdt.index = p->index;
+    s_fdt.sphb = p->sphb;
     pci_for_each_device(sec_bus, pci_bus_num(sec_bus),
                         spapr_populate_pci_devices_dt,
                         &s_fdt);
@@ -1734,7 +1798,7 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     /* Populate tree nodes with PCI devices attached */
     s_fdt.fdt = fdt;
     s_fdt.node_off = bus_off;
-    s_fdt.index = phb->index;
+    s_fdt.sphb = phb;
     pci_for_each_device(bus, pci_bus_num(bus),
                         spapr_populate_pci_devices_dt,
                         &s_fdt);
