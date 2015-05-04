@@ -48,6 +48,7 @@ static const QDevAlias qdev_alias_table[] = {
     { "lsi53c895a", "lsi" },
     { "ich9-ahci", "ahci" },
     { "kvm-pci-assign", "pci-assign" },
+    { "powerpc64-cpu-socket", "spapr-cpu-socket", QEMU_ARCH_PPC },
     { }
 };
 
