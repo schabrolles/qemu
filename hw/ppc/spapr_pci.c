@@ -1236,14 +1236,16 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         }
     }
 
-    tcet = spapr_tce_new_table(DEVICE(sphb), sphb->dma_liobn);
-    if (!tcet) {
-            error_setg(errp, "failed to create TCE table");
+    for (i = 0; i < SPAPR_PCI_DMA_MAX_WINDOWS; ++i) {
+        tcet = spapr_tce_new_table(DEVICE(sphb),
+                                   SPAPR_PCI_LIOBN(sphb->index, i));
+        if (!tcet) {
+            error_setg(errp, "spapr_tce_new_table failed");
             return;
+        }
+        memory_region_add_subregion_overlap(&sphb->iommu_root, 0,
+                                            spapr_tce_get_iommu(tcet), 0);
     }
-
-    memory_region_add_subregion(&sphb->iommu_root, 0,
-                                spapr_tce_get_iommu(tcet));
 
     sphb->msi = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, g_free);
 }
@@ -1254,6 +1256,9 @@ static int spapr_phb_dma_capabilities_update(sPAPRPHBState *sphb)
 
     sphb->dma32_window_start = 0;
     sphb->dma32_window_size = SPAPR_PCI_DMA32_SIZE;
+    sphb->windows_supported = SPAPR_PCI_DMA_MAX_WINDOWS;
+    sphb->page_size_mask = (1 << 12) | (1 << 16) | (1 << 24);
+    sphb->dma64_window_size = pow2ceil(ram_size);
 
     ret = spapr_phb_vfio_dma_capabilities_update(sphb);
     sphb->has_vfio = (ret == 0);
@@ -1261,12 +1266,31 @@ static int spapr_phb_dma_capabilities_update(sPAPRPHBState *sphb)
     return 0;
 }
 
-static int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
-                                     uint32_t liobn, uint32_t page_shift,
-                                     uint64_t window_size)
+int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
+                              uint32_t liobn, uint32_t page_shift,
+                              uint64_t window_size)
 {
     uint64_t bus_offset = sphb->dma32_window_start;
     sPAPRTCETable *tcet = spapr_tce_find_by_liobn(liobn);
+    int ret;
+
+    if (SPAPR_PCI_DMA_WINDOW_NUM(liobn) && !sphb->ddw_enabled) {
+        return -1;
+    }
+
+    if (sphb->ddw_enabled) {
+        if (sphb->has_vfio) {
+            ret = spapr_phb_vfio_dma_init_window(sphb,
+                                                 page_shift, window_size,
+                                                 &bus_offset);
+            if (ret) {
+                return ret;
+            }
+        } else if (SPAPR_PCI_DMA_WINDOW_NUM(liobn)) {
+            /* No VFIO so we choose a huge window address */
+            bus_offset = SPAPR_PCI_DMA64_START;
+        }
+    }
 
     spapr_tce_table_enable(tcet, bus_offset, page_shift,
                            window_size >> page_shift,
@@ -1278,9 +1302,14 @@ static int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
 int spapr_phb_dma_remove_window(sPAPRPHBState *sphb,
                                 sPAPRTCETable *tcet)
 {
+    int ret = 0;
+
+    if (sphb->has_vfio && sphb->ddw_enabled) {
+        ret = spapr_phb_vfio_dma_remove_window(sphb, tcet);
+    }
     spapr_tce_table_disable(tcet);
 
-    return 0;
+    return ret;
 }
 
 static int spapr_phb_disable_dma_windows(Object *child, void *opaque)
@@ -1339,6 +1368,8 @@ static Property spapr_phb_properties[] = {
                        SPAPR_PCI_IO_WIN_SIZE),
     DEFINE_PROP_BOOL("dynamic-reconfiguration", sPAPRPHBState, dr_enabled,
                      true),
+    DEFINE_PROP_BOOL("ddw", sPAPRPHBState, ddw_enabled, true),
+    DEFINE_PROP_UINT8("levels", sPAPRPHBState, levels, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1536,6 +1567,15 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     uint32_t interrupt_map_mask[] = {
         cpu_to_be32(b_ddddd(-1)|b_fff(0)), 0x0, 0x0, cpu_to_be32(-1)};
     uint32_t interrupt_map[PCI_SLOT_MAX * PCI_NUM_PINS][7];
+    uint32_t ddw_applicable[] = {
+        cpu_to_be32(RTAS_IBM_QUERY_PE_DMA_WINDOW),
+        cpu_to_be32(RTAS_IBM_CREATE_PE_DMA_WINDOW),
+        cpu_to_be32(RTAS_IBM_REMOVE_PE_DMA_WINDOW)
+    };
+    uint32_t ddw_extensions[] = {
+        cpu_to_be32(1),
+        cpu_to_be32(RTAS_IBM_RESET_PE_DMA_WINDOW)
+    };
     sPAPRTCETable *tcet;
 
     /* Start populating the FDT */
@@ -1557,6 +1597,14 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     _FDT(fdt_setprop(fdt, bus_off, "reg", &bus_reg, sizeof(bus_reg)));
     _FDT(fdt_setprop_cell(fdt, bus_off, "ibm,pci-config-space-type", 0x1));
     _FDT(fdt_setprop_cell(fdt, bus_off, "ibm,pe-total-#msi", XICS_IRQS));
+
+    /* Dynamic DMA window */
+    if (phb->ddw_enabled) {
+        _FDT(fdt_setprop(fdt, bus_off, "ibm,ddw-applicable", &ddw_applicable,
+                         sizeof(ddw_applicable)));
+        _FDT(fdt_setprop(fdt, bus_off, "ibm,ddw-extensions",
+                         &ddw_extensions, sizeof(ddw_extensions)));
+    }
 
     /* Build the interrupt-map, this must matches what is done
      * in pci_spapr_map_irq

@@ -88,6 +88,12 @@ struct sPAPRPHBState {
     uint32_t dma32_window_size;
     bool has_vfio;
     int32_t iommugroupid; /* obsolete */
+    bool ddw_enabled;
+    uint32_t windows_supported;
+    uint64_t page_size_mask;
+    uint64_t dma64_window_size;
+    uint8_t max_levels;
+    uint8_t levels;
 
     QLIST_ENTRY(sPAPRPHBState) list;
 };
@@ -110,6 +116,12 @@ struct sPAPRPHBState {
 
 #define SPAPR_PCI_DMA32_SIZE         0x40000000
 
+/* Default 64bit dynamic window offset */
+#define SPAPR_PCI_DMA64_START        0x8000000000000000ULL
+
+/* Maximum allowed number of DMA windows for emulated PHB */
+#define SPAPR_PCI_DMA_MAX_WINDOWS    2
+
 static inline qemu_irq spapr_phb_lsi_qirq(struct sPAPRPHBState *phb, int pin)
 {
     return xics_get_qirq(spapr->icp, phb->lsi_table[pin].irq);
@@ -128,11 +140,20 @@ void spapr_pci_rtas_init(void);
 sPAPRPHBState *spapr_pci_find_phb(sPAPREnvironment *spapr, uint64_t buid);
 PCIDevice *spapr_pci_find_dev(sPAPREnvironment *spapr, uint64_t buid,
                               uint32_t config_addr);
+int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
+                              uint32_t liobn, uint32_t page_shift,
+                              uint64_t window_size);
 int spapr_phb_dma_remove_window(sPAPRPHBState *sphb,
                                 sPAPRTCETable *tcet);
 int spapr_phb_dma_reset(sPAPRPHBState *sphb);
 
 int spapr_phb_vfio_dma_capabilities_update(sPAPRPHBState *sphb);
+int spapr_phb_vfio_dma_init_window(sPAPRPHBState *sphb,
+                                   uint32_t page_shift,
+                                   uint64_t window_size,
+                                   uint64_t *bus_offset);
+int spapr_phb_vfio_dma_remove_window(sPAPRPHBState *sphb,
+                                     sPAPRTCETable *tcet);
 int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
                                   unsigned int addr, int option);
 int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state);
