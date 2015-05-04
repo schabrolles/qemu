@@ -59,6 +59,8 @@
 #include "hw/nmi.h"
 
 #include "hw/compat.h"
+#include "hw/mem/pc-dimm.h"
+#include "qapi/qmp/qerror.h"
 
 #include <libfdt.h>
 
@@ -821,6 +823,10 @@ int spapr_h_cas_compose_response(target_ulong addr, target_ulong size,
         _FDT((spapr_populate_drconf_memory(spapr, fdt)));
     } else {
         _FDT((spapr_populate_memory(spapr, fdt)));
+    }
+
+    if (spapr->dr_lmb_enabled) {
+        _FDT(spapr_drc_populate_dt(fdt, 0, NULL, SPAPR_DR_CONNECTOR_TYPE_LMB));
     }
 
     /* Pack resulting tree */
@@ -1958,12 +1964,181 @@ static void spapr_nmi(NMIState *n, int cpu_index, Error **errp)
     }
 }
 
+static void spapr_add_lmbs(DeviceState *dev, uint64_t addr, uint64_t size,
+                            Error **errp)
+{
+    sPAPRDRConnector *drc;
+    uint32_t nr_lmbs = size/SPAPR_MEMORY_BLOCK_SIZE;
+    int i;
+
+    if (size % SPAPR_MEMORY_BLOCK_SIZE) {
+        error_setg(errp, "Hotplugged memory size must be a multiple of "
+                      "%d MB", SPAPR_MEMORY_BLOCK_SIZE/(1024 * 1024));
+        return;
+    }
+
+    /*
+     * Check for DRC connectors and send hotplug notification to the
+     * guest only in case of hotplugged memory. This allows cold plugged
+     * memory to be specified at boot time.
+     */
+    if (!dev->hotplugged) {
+        return;
+    }
+
+    for (i = 0; i < nr_lmbs; i++) {
+        drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_LMB,
+                addr/SPAPR_MEMORY_BLOCK_SIZE);
+        g_assert(drc);
+
+        /*
+         * TODO: Not doing drc->attach() since it is currently not
+         * needed. When pseries guest kernel implements configure-connector
+         * RTAS for memory hotplug, we will have to pass a DT node at
+         * which time we can use ->attach().
+         */
+        spapr_hotplug_req_add_event(drc);
+        addr += SPAPR_MEMORY_BLOCK_SIZE;
+    }
+}
+
+/*
+ * TODO: Share code with pc_dimm_plug.
+ */
+static void spapr_memory_plug(HotplugHandler *hotplug_dev,
+                         DeviceState *dev, Error **errp)
+{
+    int slot;
+    Error *local_err = NULL;
+    sPAPRMachineState *ms = SPAPR_MACHINE(hotplug_dev);
+    MachineState *machine = MACHINE(hotplug_dev);
+    PCDIMMDevice *dimm = PC_DIMM(dev);
+    PCDIMMDeviceClass *ddc = PC_DIMM_GET_CLASS(dimm);
+    MemoryRegion *mr = ddc->get_memory_region(dimm);
+    uint64_t existing_dimms_capacity = 0;
+    uint64_t align = TARGET_PAGE_SIZE;
+    uint64_t addr;
+
+    addr = object_property_get_int(OBJECT(dimm), PC_DIMM_ADDR_PROP, &local_err);
+    if (local_err) {
+        goto out;
+    }
+
+    if (memory_region_get_alignment(mr) && ms->enforce_aligned_dimm) {
+        align = memory_region_get_alignment(mr);
+    }
+
+    addr = pc_dimm_get_free_addr(ms->hotplug_memory_base,
+                                 memory_region_size(&ms->hotplug_memory),
+                                 !addr ? NULL : &addr, align,
+                                 memory_region_size(mr), &local_err);
+    if (local_err) {
+        goto out;
+    }
+
+    existing_dimms_capacity = pc_existing_dimms_capacity(&local_err);
+    if (local_err) {
+        goto out;
+    }
+
+    if (existing_dimms_capacity + memory_region_size(mr) >
+        machine->maxram_size - machine->ram_size) {
+        error_setg(&local_err, "not enough space, currently 0x%" PRIx64
+                   " in use of total hot pluggable 0x" RAM_ADDR_FMT,
+                   existing_dimms_capacity,
+                   machine->maxram_size - machine->ram_size);
+        goto out;
+    }
+
+    object_property_set_int(OBJECT(dev), addr, PC_DIMM_ADDR_PROP, &local_err);
+    if (local_err) {
+        goto out;
+    }
+    trace_mhp_pc_dimm_assigned_address(addr);
+
+    slot = object_property_get_int(OBJECT(dev), PC_DIMM_SLOT_PROP, &local_err);
+    if (local_err) {
+        goto out;
+    }
+
+    slot = pc_dimm_get_free_slot(slot == PC_DIMM_UNASSIGNED_SLOT ? NULL : &slot,
+                                 machine->ram_slots, &local_err);
+    if (local_err) {
+        goto out;
+    }
+    object_property_set_int(OBJECT(dev), slot, PC_DIMM_SLOT_PROP, &local_err);
+    if (local_err) {
+        goto out;
+    }
+    trace_mhp_pc_dimm_assigned_slot(slot);
+
+    if (kvm_enabled() && !kvm_has_free_slot(machine)) {
+        error_setg(&local_err, "hypervisor has no free memory slots left");
+        goto out;
+    }
+
+    memory_region_add_subregion(&ms->hotplug_memory,
+                                addr - ms->hotplug_memory_base, mr);
+    vmstate_register_ram(mr, dev);
+
+    spapr_add_lmbs(dev, addr, memory_region_size(mr), &local_err);
+    if (local_err) {
+        vmstate_unregister_ram(mr, dev);
+        memory_region_del_subregion(&ms->hotplug_memory, mr);
+    }
+
+out:
+    error_propagate(errp, local_err);
+}
+
+static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
+                                      DeviceState *dev, Error **errp)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+        uint32_t node;
+
+        if (!spapr->dr_lmb_enabled) {
+            error_setg(errp, "Memory hotplug not supported for this machine");
+            return;
+        }
+        node = object_property_get_int(OBJECT(dev), PC_DIMM_NODE_PROP, errp);
+        if (*errp) {
+            return;
+        }
+
+        if (node != 0) {
+            error_setg(errp, "Currently hot adding memory to only node 0"
+                        " is supported for sPAPR");
+            return;
+        }
+        spapr_memory_plug(hotplug_dev, dev, errp);
+    }
+}
+
+static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
+                                      DeviceState *dev, Error **errp)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+        error_setg(errp, "Memory hot unplug not supported by sPAPR");
+    }
+}
+
+static HotplugHandler *spapr_get_hotpug_handler(MachineState *machine,
+                                             DeviceState *dev)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+        return HOTPLUG_HANDLER(machine);
+    }
+    return NULL;
+}
+
 static void spapr_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     sPAPRMachineClass *smc = SPAPR_MACHINE_CLASS(oc);
     FWPathProviderClass *fwc = FW_PATH_PROVIDER_CLASS(oc);
     NMIClass *nc = NMI_CLASS(oc);
+    HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
 
     mc->init = ppc_spapr_init;
     mc->reset = ppc_spapr_reset;
@@ -1974,6 +2149,9 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
     mc->default_ram_size = 512 * M_BYTE;
     mc->kvm_type = spapr_kvm_type;
     mc->has_dynamic_sysbus = true;
+    mc->get_hotplug_handler = spapr_get_hotpug_handler;
+    hc->plug = spapr_machine_device_plug;
+    hc->unplug = spapr_machine_device_unplug;
     smc->dr_lmb_enabled = false;
 
     fwc->get_dev_path = spapr_get_fw_dev_path;
@@ -1991,6 +2169,7 @@ static const TypeInfo spapr_machine_info = {
     .interfaces = (InterfaceInfo[]) {
         { TYPE_FW_PATH_PROVIDER },
         { TYPE_NMI },
+        { TYPE_HOTPLUG_HANDLER },
         { }
     },
 };
