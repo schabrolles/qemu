@@ -530,7 +530,7 @@ void tcg_cpu_address_space_init(CPUState *cpu, AddressSpace *as)
 }
 #endif
 
-void cpu_exec_init(CPUArchState *env)
+void cpu_exec_init(CPUArchState *env, Error **errp)
 {
     CPUState *cpu = ENV_GET_CPU(env);
     CPUClass *cc = CPU_GET_CLASS(cpu);

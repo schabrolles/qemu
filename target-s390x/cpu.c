@@ -187,7 +187,7 @@ static void s390_cpu_initfn(Object *obj)
 #endif
 
     cs->env_ptr = env;
-    cpu_exec_init(env);
+    cpu_exec_init(env, NULL);
 #if !defined(CONFIG_USER_ONLY)
     qemu_register_reset(s390_cpu_machine_reset_cb, cpu);
     qemu_get_timedate(&tm, 0);

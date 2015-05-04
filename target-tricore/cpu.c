@@ -88,7 +88,7 @@ static void tricore_cpu_initfn(Object *obj)
     CPUTriCoreState *env = &cpu->env;
 
     cs->env_ptr = env;
-    cpu_exec_init(env);
+    cpu_exec_init(env, NULL);
 
     if (tcg_enabled()) {
         tricore_tcg_init();

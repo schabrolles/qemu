@@ -369,7 +369,7 @@ static void arm_cpu_initfn(Object *obj)
     static bool inited;
 
     cs->env_ptr = &cpu->env;
-    cpu_exec_init(&cpu->env);
+    cpu_exec_init(&cpu->env, NULL);
     cpu->cp_regs = g_hash_table_new_full(g_int_hash, g_int_equal,
                                          g_free, g_free);
 
