@@ -121,6 +121,9 @@ struct sPAPRMachineState {
 
     /*< public >*/
     char *kvm_type;
+    ram_addr_t hotplug_memory_base;
+    MemoryRegion hotplug_memory;
+    bool enforce_aligned_dimm;
 };
 
 sPAPREnvironment *spapr;
@@ -1425,6 +1428,7 @@ static void ppc_spapr_init(MachineState *machine)
     long load_limit, fw_size;
     bool kernel_le = false;
     char *filename;
+    sPAPRMachineState *ms = SPAPR_MACHINE(machine);
 
     msi_supported = true;
 
@@ -1537,6 +1541,36 @@ static void ppc_spapr_init(MachineState *machine)
                                    rma_alloc_size, rma);
         vmstate_register_ram_global(rma_region);
         memory_region_add_subregion(sysmem, 0, rma_region);
+    }
+
+    /* initialize hotplug memory address space */
+    if (machine->ram_size < machine->maxram_size) {
+        ram_addr_t hotplug_mem_size =
+            machine->maxram_size - machine->ram_size;
+
+        if (machine->ram_slots > SPAPR_MAX_RAM_SLOTS) {
+            error_report("unsupported amount of memory slots: %"PRIu64,
+                         machine->ram_slots);
+            exit(EXIT_FAILURE);
+        }
+
+        ms->hotplug_memory_base = ROUND_UP(machine->ram_size,
+                                    SPAPR_HOTPLUG_MEM_ALIGN);
+
+        if (ms->enforce_aligned_dimm) {
+            hotplug_mem_size += SPAPR_HOTPLUG_MEM_ALIGN * machine->ram_slots;
+        }
+
+        if ((ms->hotplug_memory_base + hotplug_mem_size) < hotplug_mem_size) {
+            error_report("unsupported amount of maximum memory: " RAM_ADDR_FMT,
+                         machine->maxram_size);
+            exit(EXIT_FAILURE);
+        }
+
+        memory_region_init(&ms->hotplug_memory, OBJECT(ms),
+                           "hotplug-memory", hotplug_mem_size);
+        memory_region_add_subregion(sysmem, ms->hotplug_memory_base,
+                                    &ms->hotplug_memory);
     }
 
     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, "spapr-rtas.bin");
@@ -1788,11 +1822,15 @@ static void spapr_set_kvm_type(Object *obj, const char *value, Error **errp)
 
 static void spapr_machine_initfn(Object *obj)
 {
+    sPAPRMachineState *ms = SPAPR_MACHINE(obj);
+
     object_property_add_str(obj, "kvm-type",
                             spapr_get_kvm_type, spapr_set_kvm_type, NULL);
     object_property_set_description(obj, "kvm-type",
                                     "Specifies the KVM virtualization mode (HV, PR)",
                                     NULL);
+
+    ms->enforce_aligned_dimm = true;
 }
 
 static void ppc_cpu_do_nmi_on_cpu(void *arg)
