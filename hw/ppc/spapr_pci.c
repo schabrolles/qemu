@@ -980,7 +980,9 @@ static int spapr_populate_pci_child_dt(PCIDevice *dev, void *fdt, int offset,
         _FDT(fdt_setprop_string(fdt, offset, "ibm,loc-code", buf));
         g_free(buf);
     }
-    _FDT(fdt_setprop_cell(fdt, offset, "ibm,my-drc-index", drc_index));
+    if (drc_index) {
+        _FDT(fdt_setprop_cell(fdt, offset, "ibm,my-drc-index", drc_index));
+    }
 
     _FDT(fdt_setprop_cell(fdt, offset, "#address-cells",
                           RESOURCE_CELLS_ADDRESS));
@@ -1601,6 +1603,20 @@ PCIHostState *spapr_create_phb(sPAPREnvironment *spapr, int index)
 #define b_fff(x)        b_x((x), 8, 3)  /* function number */
 #define b_rrrrrrrr(x)   b_x((x), 0, 8)  /* register number */
 
+static uint32_t spapr_phb_get_pci_drc_index(sPAPRPHBState *phb,
+                                            PCIDevice *pdev)
+{
+    sPAPRDRConnector *drc = spapr_phb_get_pci_drc(phb, pdev);
+    sPAPRDRConnectorClass *drck;
+
+    if (!drc) {
+        return 0;
+    }
+
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+    return drck->get_index(drc);
+}
+
 typedef struct sPAPRFDT {
     void *fdt;
     int node_off;
@@ -1617,6 +1633,7 @@ static void spapr_populate_pci_devices_dt(PCIBus *bus, PCIDevice *pdev,
     int func = PCI_FUNC(pdev->devfn);
     char nodename[512];
     sPAPRFDT s_fdt;
+    uint32_t drc_index = spapr_phb_get_pci_drc_index(p->sphb, pdev);
 
     if (func) {
         sprintf(nodename, "pci@%d,%d", slot, func);
@@ -1624,7 +1641,7 @@ static void spapr_populate_pci_devices_dt(PCIBus *bus, PCIDevice *pdev,
         sprintf(nodename, "pci@%d", slot);
     }
     offset = fdt_add_subnode(p->fdt, p->node_off, nodename);
-    ret = spapr_populate_pci_child_dt(pdev, p->fdt, offset, p->sphb, 0);
+    ret = spapr_populate_pci_child_dt(pdev, p->fdt, offset, p->sphb, drc_index);
     g_assert(!ret);
 
     if ((pci_default_read_config(pdev, PCI_HEADER_TYPE, 1) !=
