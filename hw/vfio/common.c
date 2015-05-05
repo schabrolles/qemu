@@ -847,7 +847,7 @@ int vfio_container_spapr_set_liobn(AddressSpace *as,
                                    uint64_t start_addr)
 {
 #ifdef CONFIG_KVM
-    int ret;
+    int ret = 0;
     struct kvm_vfio_spapr_tce_liobn param = {
         .argsz = sizeof(param),
         .fd = -1,
