@@ -1772,6 +1772,11 @@ static void ppc_spapr_init(MachineState *machine)
         object_property_set_bool(socket, true, "realized", &error_abort);
     }
 
+    if (kvm_enabled()) {
+        /* Enable H_LOGICAL_CI_* so SLOF can talk to in-kernel devices */
+        kvmppc_enable_logical_ci_hcalls();
+    }
+
     /* allocate RAM */
     spapr->ram_limit = ram_size;
     spapr->maxram_limit = machine->maxram_size;
