@@ -118,7 +118,7 @@ struct %(name)s
 
 def generate_enum_lookup(name, values):
     ret = mcgen('''
-const char *%(name)s_lookup[] = {
+const char * const %(name)s_lookup[] = {
 ''',
                          name=name)
     i = 0
@@ -140,7 +140,7 @@ const char *%(name)s_lookup[] = {
 
 def generate_enum(name, values):
     lookup_decl = mcgen('''
-extern const char *%(name)s_lookup[];
+extern const char * const %(name)s_lookup[];
 ''',
                 name=name)
 
