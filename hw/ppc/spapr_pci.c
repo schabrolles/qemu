@@ -1353,8 +1353,9 @@ int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
     }
 
     if (sphb->ddw_enabled) {
+        ret = -1;
         if (sphb->has_vfio) {
-            ret = spapr_phb_vfio_dma_init_window(sphb, tcet,
+            ret = spapr_phb_vfio_dma_init_window(sphb,
                                                  page_shift, window_size,
                                                  &bus_offset);
             if (ret) {
@@ -1369,6 +1370,17 @@ int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
     spapr_tce_table_enable(tcet, bus_offset, page_shift,
                            window_size >> page_shift,
                            sphb->has_vfio);
+
+    if (!tcet->vfio_accel || !sphb->has_vfio) {
+        return 0;
+    }
+    ret = spapr_phb_vfio_dma_enable_kvm_accel(sphb, tcet);
+    if (ret) {
+        spapr_tce_table_disable(tcet);
+        spapr_tce_table_enable(tcet, bus_offset, page_shift,
+                               window_size >> page_shift,
+                               false);
+    }
 
     return 0;
 }

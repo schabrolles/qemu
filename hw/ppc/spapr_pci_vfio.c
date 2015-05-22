@@ -73,7 +73,6 @@ static int spapr_phb_vfio_levels(uint32_t entries)
 }
 
 int spapr_phb_vfio_dma_init_window(sPAPRPHBState *sphb,
-                                   sPAPRTCETable *tcet,
                                    uint32_t page_shift,
                                    uint64_t window_size,
                                    uint64_t *bus_offset)
@@ -107,24 +106,14 @@ int spapr_phb_vfio_dma_init_window(sPAPRPHBState *sphb,
     }
     *bus_offset = create.start_addr;
 
-    spapr_tce_table_enable(tcet, *bus_offset, page_shift,
-                           window_size >> page_shift,
-                           true);
-
-    if (!tcet->vfio_accel) {
-        return 0;
-    }
-
-    ret = vfio_container_spapr_set_liobn(&sphb->iommu_as,
-                                         tcet->liobn, *bus_offset);
-    if (ret) {
-        spapr_tce_table_disable(tcet);
-        spapr_tce_table_enable(tcet, *bus_offset, page_shift,
-                               window_size >> page_shift,
-                               false);
-    }
-
     return 0;
+}
+
+int spapr_phb_vfio_dma_enable_kvm_accel(sPAPRPHBState *sphb,
+                                        sPAPRTCETable *tcet)
+{
+    return vfio_container_spapr_set_liobn(&sphb->iommu_as,
+                                          tcet->liobn, tcet->bus_offset);
 }
 
 int spapr_phb_vfio_dma_remove_window(sPAPRPHBState *sphb,
