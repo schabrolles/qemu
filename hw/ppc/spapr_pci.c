@@ -1084,6 +1084,8 @@ static sPAPRDRConnector *spapr_phb_get_pci_drc(sPAPRPHBState *phb,
                                     pdev->devfn);
 }
 
+static int spapr_phb_dma_capabilities_update(sPAPRPHBState *sphb);
+
 static void spapr_phb_hot_plug_child(HotplugHandler *plug_handler,
                                      DeviceState *plugged_dev, Error **errp)
 {
@@ -1116,6 +1118,7 @@ static void spapr_phb_hot_plug_child(HotplugHandler *plug_handler,
     if (plugged_dev->hotplugged) {
         spapr_hotplug_req_add_event(drc);
     }
+    spapr_phb_dma_capabilities_update(phb);
 }
 
 static void spapr_phb_hot_unplug_child(HotplugHandler *plug_handler,
@@ -1144,6 +1147,7 @@ static void spapr_phb_hot_unplug_child(HotplugHandler *plug_handler,
         }
         spapr_hotplug_req_remove_event(drc);
     }
+    spapr_phb_dma_capabilities_update(phb);
 }
 
 static void spapr_phb_realize(DeviceState *dev, Error **errp)
@@ -1324,9 +1328,22 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     sphb->msi = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, g_free);
 }
 
+static int spapr_phb_replay_dma_mappings(Object *child, void *opaque)
+{
+    sPAPRTCETable *tcet = (sPAPRTCETable *)
+        object_dynamic_cast(child, TYPE_SPAPR_TCE_TABLE);
+
+    if (tcet) {
+        return spapr_tce_replay_dma_mappings(tcet);
+    }
+
+    return 0;
+}
+
 static int spapr_phb_dma_capabilities_update(sPAPRPHBState *sphb)
 {
     int ret;
+    bool had_vfio = sphb->has_vfio;
 
     sphb->dma32_window_start = 0;
     sphb->dma32_window_size = SPAPR_PCI_DMA32_SIZE;
@@ -1336,6 +1353,11 @@ static int spapr_phb_dma_capabilities_update(sPAPRPHBState *sphb)
 
     ret = spapr_phb_vfio_dma_capabilities_update(sphb);
     sphb->has_vfio = (ret == 0);
+
+    if (!had_vfio && sphb->has_vfio) {
+        object_child_foreach(OBJECT(sphb), spapr_phb_replay_dma_mappings, NULL);
+
+    }
 
     return 0;
 }

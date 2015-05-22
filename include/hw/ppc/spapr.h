@@ -603,6 +603,7 @@ void spapr_tce_table_disable(sPAPRTCETable *tcet);
 MemoryRegion *spapr_tce_get_iommu(sPAPRTCETable *tcet);
 int spapr_dma_dt(void *fdt, int node_off, const char *propname,
                  uint32_t liobn, uint64_t window, uint32_t size);
+int spapr_tce_replay_dma_mappings(sPAPRTCETable *tcet);
 int spapr_tcet_dma_dt(void *fdt, int node_off, const char *propname,
                       sPAPRTCETable *tcet);
 void spapr_pci_switch_vga(bool big_endian);

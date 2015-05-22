@@ -495,6 +495,21 @@ int spapr_dma_dt(void *fdt, int node_off, const char *propname,
     return 0;
 }
 
+int spapr_tce_replay_dma_mappings(sPAPRTCETable *tcet)
+{
+    target_ulong ioba = tcet->bus_offset, pgsz = (1ULL << tcet->page_shift);
+    long i, ret;
+
+    for (i = 0; i < tcet->nb_table; ++i, ioba += pgsz) {
+        ret = put_tce_emu(tcet, ioba, tcet->table[i]);
+        if (ret)
+            break;
+    }
+    trace_spapr_iommu_replay(tcet->liobn, ret);
+
+    return ret;
+}
+
 int spapr_tcet_dma_dt(void *fdt, int node_off, const char *propname,
                       sPAPRTCETable *tcet)
 {
