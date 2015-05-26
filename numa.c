@@ -83,8 +83,9 @@ uint32_t get_numa_node(ram_addr_t addr, Error **errp)
             case MEMORY_DEVICE_INFO_KIND_DIMM:
                 if (addr >= value->dimm->addr &&
                         addr < (value->dimm->addr + value->dimm->size)) {
+                    i = value->dimm->node;
                     qapi_free_MemoryDeviceInfoList(info_list);
-                    return value->dimm->node;
+                    return i;
                 }
                 break;
             default:
