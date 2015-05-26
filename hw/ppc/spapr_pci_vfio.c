@@ -135,6 +135,7 @@ int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
                                          unsigned int addr, int option)
 {
     struct vfio_eeh_pe_op op = { .argsz = sizeof(op) };
+    bool is_vfio;
     int ret;
 
     switch (option) {
@@ -153,7 +154,8 @@ int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
         phb = PCI_HOST_BRIDGE(sphb);
         pdev = pci_find_device(phb->bus,
                                (addr >> 16) & 0xFF, (addr >> 8) & 0xFF);
-        if (!pdev) {
+        is_vfio = object_dynamic_cast(OBJECT(pdev), "vfio-pci") ? true : false;
+        if (!is_vfio) {
             return RTAS_OUT_PARAM_ERROR;
         }
 
