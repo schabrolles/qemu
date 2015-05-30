@@ -1281,6 +1281,8 @@ spapr_pci_rtas_ibm_query_interrupt_source_number(unsigned ioa, unsigned intr) "q
 spapr_pci_msi_write(uint64_t addr, uint64_t data, uint32_t dt_irq) "@%"PRIx64"<=%"PRIx64" IRQ %u"
 spapr_pci_lsi_set(const char *busname, int pin, uint32_t irq) "%s PIN%d IRQ %u"
 spapr_pci_msi_retry(unsigned config_addr, unsigned req_num, unsigned max_irqs) "Guest device at %x asked %u, have only %u"
+spapr_pci_dma_update(uint64_t liobn, long ret) "liobn=%"PRIx64" tcet=%ld"
+spapr_pci_dma_realloc_update(uint64_t liobn, long ret) "liobn=%"PRIx64" tcet=%ld"
 
 # hw/pci/pci.c
 pci_update_mappings_del(void *d, uint32_t bus, uint32_t func, uint32_t slot, int bar, uint64_t addr, uint64_t size) "d=%p %02x:%02x.%x %d,%#"PRIx64"+%#"PRIx64
@@ -1343,8 +1345,7 @@ spapr_iommu_pci_get(uint64_t liobn, uint64_t ioba, uint64_t ret, uint64_t tce) "
 spapr_iommu_pci_indirect(uint64_t liobn, uint64_t ioba, uint64_t tce, uint64_t iobaN, uint64_t tceN, uint64_t ret) "liobn=%"PRIx64" ioba=0x%"PRIx64" tcelist=0x%"PRIx64" iobaN=0x%"PRIx64" tceN=0x%"PRIx64" ret=%"PRId64
 spapr_iommu_pci_stuff(uint64_t liobn, uint64_t ioba, uint64_t tce_value, uint64_t npages, uint64_t ret) "liobn=%"PRIx64" ioba=0x%"PRIx64" tcevalue=0x%"PRIx64" npages=%"PRId64" ret=%"PRId64
 spapr_iommu_xlate(uint64_t liobn, uint64_t ioba, uint64_t tce, unsigned perm, unsigned pgsize) "liobn=%"PRIx64" 0x%"PRIx64" -> 0x%"PRIx64" perm=%u mask=%x"
-spapr_iommu_new_table(uint64_t liobn, void *tcet, void *table, int fd) "liobn=%"PRIx64" tcet=%p table=%p fd=%d"
-spapr_iommu_replay(uint64_t liobn, long ret) "liobn=%"PRIx64" tcet=%ld"
+spapr_iommu_alloc_table(uint64_t liobn, void *table, int fd) "liobn=%"PRIx64" table=%p fd=%d"
 spapr_iommu_ddw_query(uint64_t buid, uint32_t cfgaddr, unsigned wa, uint64_t win_size, uint32_t pgmask) "buid=%"PRIx64" addr=%"PRIx32", %u windows available, max window size=%"PRIx64", mask=%"PRIx32
 spapr_iommu_ddw_create(uint64_t buid, uint32_t cfgaddr, unsigned long long pg_size, unsigned long long req_size, uint64_t start, uint32_t liobn, long ret) "buid=%"PRIx64" addr=%"PRIx32", page size=0x%llx, requested=0x%llx, start addr=%"PRIx64", liobn=%"PRIx32", ret = %ld"
 spapr_iommu_ddw_remove(uint32_t liobn, long ret) "liobn=%"PRIx32", ret = %ld"

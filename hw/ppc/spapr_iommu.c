@@ -60,6 +60,39 @@ sPAPRTCETable *spapr_tce_find_by_liobn(target_ulong liobn)
     return NULL;
 }
 
+static uint64_t *spapr_tce_alloc_table(uint32_t liobn,
+                                       uint32_t nb_table,
+                                       uint64_t bus_offset,
+                                       uint32_t page_shift,
+                                       int *fd,
+                                       bool vfio_accel,
+                                       bool force_userspace)
+{
+    uint64_t *table;
+
+    if (kvm_enabled() && !force_userspace) {
+        table = kvmppc_create_spapr_tce(liobn, nb_table, bus_offset,
+                                        page_shift, fd, vfio_accel);
+    }
+
+    if (!table) {
+        *fd = -1;
+        table = g_malloc0(nb_table * sizeof(uint64_t));
+    }
+
+    trace_spapr_iommu_alloc_table(liobn, table, *fd);
+
+    return table;
+}
+
+static void spapr_tce_free_table(uint64_t *table, int fd, uint32_t nb_table)
+{
+    if (!kvm_enabled() ||
+        (kvmppc_remove_spapr_tce(table, fd, nb_table) != 0)) {
+        g_free(table);
+    }
+}
+
 /* Called from RCU critical section */
 static IOMMUTLBEntry spapr_tce_translate_iommu(MemoryRegion *iommu, hwaddr addr,
                                                bool is_write)
@@ -97,7 +130,7 @@ static void spapr_tce_table_pre_save(void *opaque)
     tcet->migtable = tcet->table;
 }
 
-static void spapr_tce_table_do_enable(sPAPRTCETable *tcet);
+static void spapr_tce_table_do_enable(sPAPRTCETable *tcet, bool vfio_accel);
 
 static int spapr_tce_table_post_load(void *opaque, int version_id)
 {
@@ -114,7 +147,8 @@ static int spapr_tce_table_post_load(void *opaque, int version_id)
     if (tcet->enabled) {
         if (!tcet->table) {
             tcet->enabled = false;
-            spapr_tce_table_do_enable(tcet);
+            /* VFIO does not migrate so pass vfio_accel == false */
+            spapr_tce_table_do_enable(tcet, false);
         }
         memcpy(tcet->table, tcet->migtable,
                tcet->nb_table * sizeof(tcet->table[0]));
@@ -155,6 +189,16 @@ static MemoryRegionIOMMUOps spapr_iommu_ops = {
 static int spapr_tce_table_realize(DeviceState *dev)
 {
     sPAPRTCETable *tcet = SPAPR_TCE_TABLE(dev);
+    Object *tcetobj = OBJECT(tcet);
+    char tmp[32];
+
+    tcet->fd = -1;
+
+    snprintf(tmp, sizeof(tmp), "tce-root-%x", tcet->liobn);
+    memory_region_init(&tcet->root, tcetobj, tmp, UINT64_MAX);
+
+    snprintf(tmp, sizeof(tmp), "tce-iommu-%x", tcet->liobn);
+    memory_region_init_iommu(&tcet->iommu, tcetobj, &spapr_iommu_ops, tmp, 0);
 
     QLIST_INSERT_HEAD(&spapr_tce_tables, tcet, list);
 
@@ -179,45 +223,29 @@ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn)
     tcet->liobn = liobn;
 
     snprintf(tmp, sizeof(tmp), "tce-table-%x", liobn);
-    memory_region_init(&tcet->root, OBJECT(tcet), tmp, UINT64_MAX);
-
     object_property_add_child(OBJECT(owner), tmp, OBJECT(tcet), NULL);
 
     object_property_set_bool(OBJECT(tcet), true, "realized", NULL);
 
-    trace_spapr_iommu_new_table(tcet->liobn, tcet, tcet->table, tcet->fd);
-
     return tcet;
 }
 
-static void spapr_tce_table_do_enable(sPAPRTCETable *tcet)
+static void spapr_tce_table_do_enable(sPAPRTCETable *tcet, bool vfio_accel)
 {
-
     if (!tcet->nb_table) {
         return;
     }
 
-    if (kvm_enabled()) {
-        tcet->table = kvmppc_create_spapr_tce(tcet->liobn,
-                                              tcet->nb_table,
-                                              tcet->bus_offset,
-                                              tcet->page_shift,
-                                              &tcet->fd,
-                                              tcet->vfio_accel);
-        if (!tcet->table) {
-            tcet->vfio_accel = false;
-        }
-    }
+    tcet->table = spapr_tce_alloc_table(tcet->liobn,
+                                        tcet->nb_table,
+                                        tcet->bus_offset,
+                                        tcet->page_shift,
+                                        &tcet->fd,
+                                        vfio_accel,
+                                        false);
 
-    if (!tcet->table) {
-        size_t table_size = tcet->nb_table * sizeof(uint64_t);
-        tcet->table = g_malloc0(table_size);
-    }
-
-    memory_region_init_iommu(&tcet->iommu, OBJECT(tcet), &spapr_iommu_ops,
-                             "iommu-spapr",
-                             (uint64_t)tcet->nb_table << tcet->page_shift);
-
+    memory_region_set_size(&tcet->iommu,
+                           (uint64_t)tcet->nb_table << tcet->page_shift);
     memory_region_add_subregion(&tcet->root, tcet->bus_offset, &tcet->iommu);
 
     tcet->enabled = true;
@@ -234,9 +262,8 @@ void spapr_tce_table_enable(sPAPRTCETable *tcet,
     tcet->bus_offset = bus_offset;
     tcet->page_shift = page_shift;
     tcet->nb_table = nb_table;
-    tcet->vfio_accel = vfio_accel;
 
-    spapr_tce_table_do_enable(tcet);
+    spapr_tce_table_do_enable(tcet, vfio_accel);
 }
 
 void spapr_tce_table_disable(sPAPRTCETable *tcet)
@@ -246,20 +273,15 @@ void spapr_tce_table_disable(sPAPRTCETable *tcet)
     }
 
     memory_region_del_subregion(&tcet->root, &tcet->iommu);
+    memory_region_set_size(&tcet->iommu, 0);
 
-    if (!kvm_enabled() ||
-        (kvmppc_remove_spapr_tce(tcet->table, tcet->fd,
-                                 tcet->nb_table) != 0)) {
-        tcet->fd = -1;
-        g_free(tcet->table);
-    }
+    spapr_tce_free_table(tcet->table, tcet->fd, tcet->nb_table);
+    tcet->fd = -1;
     tcet->table = NULL;
-    object_unref(OBJECT(&tcet->iommu));
     tcet->enabled = false;
     tcet->bus_offset = 0;
     tcet->page_shift = 0;
     tcet->nb_table = 0;
-    tcet->vfio_accel = false;
 }
 
 static void spapr_tce_table_unrealize(DeviceState *dev, Error **errp)
@@ -495,17 +517,45 @@ int spapr_dma_dt(void *fdt, int node_off, const char *propname,
     return 0;
 }
 
-int spapr_tce_replay_dma_mappings(sPAPRTCETable *tcet)
+static int spapr_tce_do_replay(sPAPRTCETable *tcet, uint64_t *table)
 {
     target_ulong ioba = tcet->bus_offset, pgsz = (1ULL << tcet->page_shift);
     long i, ret;
 
     for (i = 0; i < tcet->nb_table; ++i, ioba += pgsz) {
-        ret = put_tce_emu(tcet, ioba, tcet->table[i]);
+        ret = put_tce_emu(tcet, ioba, table[i]);
         if (ret)
             break;
     }
-    trace_spapr_iommu_replay(tcet->liobn, ret);
+
+    return ret;
+}
+
+int spapr_tce_replay(sPAPRTCETable *tcet)
+{
+    return spapr_tce_do_replay(tcet, tcet->table);
+}
+
+int spapr_tce_realloc_userspace(sPAPRTCETable *tcet, bool replay)
+{
+    int ret = 0, oldfd;
+    uint64_t *oldtable;
+
+    oldtable = tcet->table;
+    oldfd = tcet->fd;
+    tcet->table = spapr_tce_alloc_table(tcet->liobn,
+                                        tcet->nb_table,
+                                        tcet->bus_offset,
+                                        tcet->page_shift,
+                                        &tcet->fd,
+                                        false,
+                                        true); /* force_userspace */
+
+    if (replay) {
+        ret = spapr_tce_do_replay(tcet, oldtable);
+    }
+
+    spapr_tce_free_table(oldtable, oldfd, tcet->nb_table);
 
     return ret;
 }

@@ -157,7 +157,7 @@ int spapr_phb_vfio_dma_enable_kvm_accel(sPAPRPHBState *sphb,
 int spapr_phb_vfio_dma_remove_window(sPAPRPHBState *sphb,
                                      sPAPRTCETable *tcet);
 int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
-                                  unsigned int addr, int option);
+                                  PCIDevice *pdev, int option);
 int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state);
 int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option);
 int spapr_phb_vfio_eeh_configure(sPAPRPHBState *sphb);
