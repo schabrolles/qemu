@@ -535,7 +535,7 @@ static void *spapr_create_fdt_skel(hwaddr initrd_base,
     return fdt;
 }
 
-static void spapr_populate_memory_node(void *fdt, int nodeid, hwaddr start,
+static int spapr_populate_memory_node(void *fdt, int nodeid, hwaddr start,
                                        hwaddr size)
 {
     uint32_t associativity[] = {
@@ -558,6 +558,8 @@ static void spapr_populate_memory_node(void *fdt, int nodeid, hwaddr start,
                       sizeof(mem_reg_property))));
     _FDT((fdt_setprop(fdt, off, "ibm,associativity", associativity,
                       sizeof(associativity))));
+
+    return off;
 }
 
 static int spapr_populate_memory(sPAPREnvironment *spapr, void *fdt)
@@ -2100,11 +2102,14 @@ static void spapr_nmi(NMIState *n, int cpu_index, Error **errp)
 }
 
 static void spapr_add_lmbs(DeviceState *dev, uint64_t addr, uint64_t size,
-                            Error **errp)
+                            uint32_t node, Error **errp)
 {
     sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
     uint32_t nr_lmbs = size/SPAPR_MEMORY_BLOCK_SIZE;
-    int i;
+    int i, fdt_offset, fdt_size;
+    void *fdt;
+    Error *local_err = NULL;
 
     if (size % SPAPR_MEMORY_BLOCK_SIZE) {
         error_setg(errp, "Hotplugged memory size must be a multiple of "
@@ -2126,12 +2131,18 @@ static void spapr_add_lmbs(DeviceState *dev, uint64_t addr, uint64_t size,
                 addr/SPAPR_MEMORY_BLOCK_SIZE);
         g_assert(drc);
 
-        /*
-         * TODO: Not doing drc->attach() since it is currently not
-         * needed. When pseries guest kernel implements configure-connector
-         * RTAS for memory hotplug, we will have to pass a DT node at
-         * which time we can use ->attach().
-         */
+        fdt = create_device_tree(&fdt_size);
+        fdt_offset = spapr_populate_memory_node(fdt, node, addr,
+                                                SPAPR_MEMORY_BLOCK_SIZE);
+
+        drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+        drck->attach(drc, dev, fdt, fdt_offset, !dev->hotplugged, &local_err);
+        if (local_err) {
+            g_free(fdt);
+            error_propagate(errp, local_err);
+            return;
+        }
+
         spapr_hotplug_req_add_event(drc);
         addr += SPAPR_MEMORY_BLOCK_SIZE;
     }
@@ -2140,8 +2151,8 @@ static void spapr_add_lmbs(DeviceState *dev, uint64_t addr, uint64_t size,
 /*
  * TODO: Share code with pc_dimm_plug.
  */
-static void spapr_memory_plug(HotplugHandler *hotplug_dev,
-                         DeviceState *dev, Error **errp)
+static void spapr_memory_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
+                            uint32_t node, Error **errp)
 {
     int slot;
     Error *local_err = NULL;
@@ -2216,7 +2227,7 @@ static void spapr_memory_plug(HotplugHandler *hotplug_dev,
                                 addr - ms->hotplug_memory_base, mr);
     vmstate_register_ram(mr, dev);
 
-    spapr_add_lmbs(dev, addr, memory_region_size(mr), &local_err);
+    spapr_add_lmbs(dev, addr, memory_region_size(mr), node, &local_err);
     if (local_err) {
         vmstate_unregister_ram(mr, dev);
         memory_region_del_subregion(&ms->hotplug_memory, mr);
@@ -2511,12 +2522,7 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
             return;
         }
 
-        if (node != 0) {
-            error_setg(errp, "Currently hot adding memory to only node 0"
-                        " is supported for sPAPR");
-            return;
-        }
-        spapr_memory_plug(hotplug_dev, dev, errp);
+        spapr_memory_plug(hotplug_dev, dev, node, errp);
     }
 }
 
