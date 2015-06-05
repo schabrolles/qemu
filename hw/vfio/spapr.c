@@ -43,13 +43,14 @@ static void vfio_iommu_map_notify(Notifier *n, void *data)
      * this IOMMU to its immediate target.  We need to translate
      * it the rest of the way through to memory.
      */
+    rcu_read_lock();
     mr = address_space_translate(&address_space_memory,
                                  iotlb->translated_addr,
                                  &xlat, &len, iotlb->perm & IOMMU_WO);
     if (!memory_region_is_ram(mr)) {
-        error_report("iommu map to non memory area %"HWADDR_PRIx,
+        error_report("iommu map to non memory area %"HWADDR_PRIx"",
                      xlat);
-        return;
+        goto out;
     }
     /*
      * Translation truncates length to the IOMMU page size,
@@ -57,7 +58,7 @@ static void vfio_iommu_map_notify(Notifier *n, void *data)
      */
     if (len & iotlb->addr_mask) {
         error_report("iommu has granularity incompatible with target AS");
-        return;
+        goto out;
     }
 
     if ((iotlb->perm & IOMMU_RW) != IOMMU_NONE) {
@@ -80,6 +81,8 @@ static void vfio_iommu_map_notify(Notifier *n, void *data)
                          iotlb->addr_mask + 1, ret);
         }
     }
+out:
+    rcu_read_unlock();
 }
 
 static void vfio_spapr_listener_region_add(MemoryListener *listener,
