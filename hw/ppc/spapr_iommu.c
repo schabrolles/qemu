@@ -68,7 +68,7 @@ static uint64_t *spapr_tce_alloc_table(uint32_t liobn,
                                        bool vfio_accel,
                                        bool force_userspace)
 {
-    uint64_t *table;
+    uint64_t *table = NULL;
 
     if (kvm_enabled() && !force_userspace) {
         table = kvmppc_create_spapr_tce(liobn, nb_table, bus_offset,
