@@ -718,12 +718,24 @@ static AddressSpace *spapr_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
 static int spapr_phb_dma_update(Object *child, void *opaque)
 {
     int ret = 0;
+    uint64_t bus_offset = 0;
     sPAPRPHBState *sphb = opaque;
     sPAPRTCETable *tcet = (sPAPRTCETable *)
         object_dynamic_cast(child, TYPE_SPAPR_TCE_TABLE);
 
     if (!tcet) {
         return 0;
+    }
+
+    ret = spapr_phb_vfio_dma_init_window(sphb,
+                                         tcet->page_shift,
+                                         tcet->nb_table << tcet->page_shift,
+                                         &bus_offset);
+    if (ret) {
+        return ret;
+    }
+    if (bus_offset != tcet->bus_offset) {
+        return -EFAULT;
     }
 
     if (tcet->fd >= 0) {
