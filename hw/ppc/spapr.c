@@ -663,8 +663,9 @@ static int spapr_populate_drconf_memory(sPAPREnvironment *spapr, void *fdt)
             addr = (i - nr_assigned_lmbs) * lmb_size +
                 SPAPR_MACHINE(qdev_get_machine())->hotplug_memory_base;
         }
-        drc = spapr_dr_connector_new(qdev_get_machine(),
-                SPAPR_DR_CONNECTOR_TYPE_LMB, addr/lmb_size);
+        drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_LMB,
+                                       addr/lmb_size);
+        g_assert(drc);
         drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
 
         dynamic_memory[0] = cpu_to_be32(addr >> 32);
@@ -732,7 +733,7 @@ int spapr_h_cas_compose_response(target_ulong addr, target_ulong size,
     }
 
     /* Generate memory nodes or ibm,dynamic-reconfiguration-memory node */
-    if (memory_update) {
+    if (memory_update && spapr->dr_lmb_enabled) {
         _FDT((spapr_populate_drconf_memory(spapr, fdt)));
     } else {
         _FDT((spapr_populate_memory(spapr, fdt)));
@@ -1665,6 +1666,31 @@ static void spapr_sanitize_cpu_topology(Error **errp)
     smp_cores_per_socket = smp_nr_cores/smp_nr_sockets;
 }
 
+static void spapr_create_lmb_dr_connectors(sPAPREnvironment *spapr)
+{
+    uint64_t lmb_size = SPAPR_MEMORY_BLOCK_SIZE;
+    uint32_t nr_rma_lmbs = spapr->rma_size/lmb_size;
+    uint32_t nr_lmbs = spapr->maxram_limit/lmb_size - nr_rma_lmbs;
+    uint32_t nr_assigned_lmbs = spapr->ram_limit/lmb_size - nr_rma_lmbs;
+    int i;
+
+    for (i = 0; i < nr_lmbs; i++) {
+        sPAPRDRConnector *drc;
+        uint64_t addr;
+
+        if (i < nr_assigned_lmbs) {
+            addr = (i + nr_rma_lmbs) * lmb_size;
+        } else {
+            addr = (i - nr_assigned_lmbs) * lmb_size +
+                SPAPR_MACHINE(qdev_get_machine())->hotplug_memory_base;
+        }
+
+        drc = spapr_dr_connector_new(qdev_get_machine(),
+                SPAPR_DR_CONNECTOR_TYPE_LMB, addr/lmb_size);
+        qemu_register_reset(spapr_drc_reset, drc);
+    }
+}
+
 /* pSeries LPAR / sPAPR hardware init */
 static void ppc_spapr_init(MachineState *machine)
 {
@@ -1822,6 +1848,10 @@ static void ppc_spapr_init(MachineState *machine)
                            "hotplug-memory", hotplug_mem_size);
         memory_region_add_subregion(sysmem, ms->hotplug_memory_base,
                                     &ms->hotplug_memory);
+    }
+
+    if (spapr->dr_lmb_enabled) {
+        spapr_create_lmb_dr_connectors(spapr);
     }
 
     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, "spapr-rtas.bin");
