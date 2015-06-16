@@ -520,7 +520,7 @@ int spapr_dma_dt(void *fdt, int node_off, const char *propname,
 static int spapr_tce_do_replay(sPAPRTCETable *tcet, uint64_t *table)
 {
     target_ulong ioba = tcet->bus_offset, pgsz = (1ULL << tcet->page_shift);
-    long i, ret;
+    long i, ret = 0;
 
     for (i = 0; i < tcet->nb_table; ++i, ioba += pgsz) {
         ret = put_tce_emu(tcet, ioba, table[i]);
