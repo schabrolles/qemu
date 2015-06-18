@@ -739,10 +739,6 @@ int spapr_h_cas_compose_response(target_ulong addr, target_ulong size,
         _FDT((spapr_populate_memory(spapr, fdt)));
     }
 
-    if (spapr->dr_lmb_enabled) {
-        _FDT(spapr_drc_populate_dt(fdt, 0, NULL, SPAPR_DR_CONNECTOR_TYPE_LMB));
-    }
-
     /* Pack resulting tree */
     _FDT((fdt_pack(fdt)));
 
@@ -983,6 +979,10 @@ static void spapr_finalize_fdt(sPAPREnvironment *spapr,
             fprintf(stderr, "Couldn't set up CPU DR device tree properties\n");
             exit(1);
         }
+    }
+
+    if (spapr->dr_lmb_enabled) {
+        _FDT(spapr_drc_populate_dt(fdt, 0, NULL, SPAPR_DR_CONNECTOR_TYPE_LMB));
     }
 
     _FDT((fdt_pack(fdt)));
