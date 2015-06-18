@@ -20,7 +20,6 @@ struct vhost_virtqueue {
     unsigned long long ring_phys;
     unsigned ring_size;
     EventNotifier masked_notifier;
-    bool byteswap;
 };
 
 typedef unsigned long vhost_log_chunk_t;

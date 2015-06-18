@@ -539,13 +539,7 @@ static int vhost_virtqueue_set_addr(struct vhost_dev *dev,
         .log_guest_addr = vq->used_phys,
         .flags = enable_log ? (1 << VHOST_VRING_F_LOG) : 0,
     };
-    int r;
-
-    if (vq->byteswap) {
-	addr.flags |= (1 << VHOST_VRING_F_BYTESWAP);
-    }
-
-    r = dev->vhost_ops->vhost_call(dev, VHOST_SET_VRING_ADDR, &addr);
+    int r = dev->vhost_ops->vhost_call(dev, VHOST_SET_VRING_ADDR, &addr);
     if (r < 0) {
         return -errno;
     }
@@ -653,15 +647,6 @@ static void vhost_log_stop(MemoryListener *listener,
     /* FIXME: implement */
 }
 
-static bool vhost_virtqueue_needs_byteswap(VirtIODevice *vdev)
-{
-#ifdef HOST_WORDS_BIGENDIAN
-    return !virtio_is_big_endian(vdev);
-#else
-    return virtio_is_big_endian(vdev);
-#endif
-}
-
 static int vhost_virtqueue_start(struct vhost_dev *dev,
                                 struct VirtIODevice *vdev,
                                 struct vhost_virtqueue *vq,
@@ -721,8 +706,6 @@ static int vhost_virtqueue_start(struct vhost_dev *dev,
         r = -ENOMEM;
         goto fail_alloc_ring;
     }
-
-    vq->byteswap = vhost_virtqueue_needs_byteswap(vdev);
 
     r = vhost_virtqueue_set_addr(dev, vq, vhost_vq_index, dev->log_enabled);
     if (r < 0) {
