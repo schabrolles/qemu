@@ -117,7 +117,7 @@ struct sPAPRPHBState {
 #define SPAPR_PCI_DMA32_SIZE         0x40000000
 
 /* Default 64bit dynamic window offset */
-#define SPAPR_PCI_DMA64_START        0x8000000000000000ULL
+#define SPAPR_PCI_DMA64_START        0x800000000000000ULL
 
 /* Maximum allowed number of DMA windows for emulated PHB */
 #define SPAPR_PCI_DMA_MAX_WINDOWS    2
