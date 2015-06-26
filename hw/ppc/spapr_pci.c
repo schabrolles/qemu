@@ -731,7 +731,8 @@ static int spapr_phb_dma_update(Object *child, void *opaque)
 
     ret = spapr_phb_vfio_dma_init_window(sphb,
                                          tcet->page_shift,
-                                         tcet->nb_table << tcet->page_shift,
+                                         (uint64_t)tcet->nb_table <<
+                                         tcet->page_shift,
                                          &bus_offset);
     if (ret) {
         return ret;
