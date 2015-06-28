@@ -114,6 +114,8 @@ static int set_allocation_state(sPAPRDRConnector *drc,
             DPRINTFN("finalizing device removal");
             drck->detach(drc, DEVICE(drc->dev), drc->detach_cb,
                          drc->detach_cb_opaque, NULL);
+        } else if (drc->allocation_state == SPAPR_DR_ALLOCATION_STATE_USABLE) {
+            drc->awaiting_allocation = false;
         }
     }
     return 0;
@@ -311,6 +313,7 @@ static void attach(sPAPRDRConnector *drc, DeviceState *d, void *fdt,
     drc->fdt = fdt;
     drc->fdt_start_offset = fdt_start_offset;
     drc->configured = false;
+    drc->awaiting_allocation = true;
 
     object_property_add_link(OBJECT(drc), "device",
                              object_get_typename(OBJECT(drc->dev)),
@@ -337,6 +340,12 @@ static void detach(sPAPRDRConnector *drc, DeviceState *d,
         drc->allocation_state != SPAPR_DR_ALLOCATION_STATE_UNUSABLE) {
         DPRINTFN("awaiting transition to unusable state before removal");
         drc->awaiting_release = true;
+        return;
+    }
+
+    if (drc->awaiting_allocation) {
+        drc->awaiting_release = true;
+        DPRINTFN("awaiting allocation to complete before removal");
         return;
     }
 
