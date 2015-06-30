@@ -729,16 +729,18 @@ static int spapr_phb_dma_update(Object *child, void *opaque)
         return 0;
     }
 
-    ret = spapr_phb_vfio_dma_init_window(sphb,
-                                         tcet->page_shift,
-                                         (uint64_t)tcet->nb_table <<
-                                         tcet->page_shift,
-                                         &bus_offset);
-    if (ret) {
-        return ret;
-    }
-    if (bus_offset != tcet->bus_offset) {
-        return -EFAULT;
+    if (SPAPR_PCI_DMA_WINDOW_NUM(tcet->liobn)) {
+        ret = spapr_phb_vfio_dma_init_window(sphb,
+                                             tcet->page_shift,
+                                             (uint64_t)tcet->nb_table <<
+                                             tcet->page_shift,
+                                             &bus_offset);
+        if (ret) {
+            return ret;
+        }
+        if (bus_offset != tcet->bus_offset) {
+            return -EFAULT;
+        }
     }
 
     if (tcet->fd >= 0) {
