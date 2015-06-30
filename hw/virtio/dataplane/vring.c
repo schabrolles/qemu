@@ -153,7 +153,8 @@ bool vring_should_notify(VirtIODevice *vdev, Vring *vring)
         return true;
     }
 
-    return vring_need_event(vring_used_event(&vring->vr), new, old);
+    return vring_need_event(virtio_tswap16(vdev, vring_used_event(&vring->vr)),
+                            new, old);
 }
 
 
