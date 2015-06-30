@@ -16,9 +16,11 @@
 #include "qemu/iov.h"
 #include "qemu/thread.h"
 #include "qemu/error-report.h"
+#include "hw/virtio/virtio-access.h"
 #include "hw/virtio/dataplane/vring.h"
 #include "ioq.h"
 #include "block/block.h"
+#include "hw/virtio/dataplane/vring-accessors.h"
 #include "hw/virtio/virtio-blk.h"
 #include "virtio-blk.h"
 #include "block/aio.h"
@@ -119,7 +121,7 @@ static void complete_request(struct iocb *iocb, ssize_t ret, void *opaque)
      * written to, but for virtio-blk it seems to be the number of bytes
      * transferred plus the status bytes.
      */
-    vring_push(&s->vring, req->elem, len + sizeof(hdr));
+    vring_push(s->vdev, &s->vring, req->elem, len + sizeof(hdr));
     req->elem = NULL;
     s->num_reqs--;
 }
@@ -135,7 +137,7 @@ static void complete_request_early(VirtIOBlockDataPlane *s, VirtQueueElement *el
     qemu_iovec_destroy(inhdr);
     g_slice_free(QEMUIOVector, inhdr);
 
-    vring_push(&s->vring, elem, sizeof(hdr));
+    vring_push(s->vdev, &s->vring, elem, sizeof(hdr));
     notify_guest(s);
 }
 
@@ -212,6 +214,10 @@ static int process_request(IOQueue *ioq, VirtQueueElement *elem)
         return -EFAULT;
     }
     iov_discard_front(&iov, &out_num, sizeof(outhdr));
+
+    virtio_tswap32s(s->vdev, &outhdr.type);
+    virtio_tswap32s(s->vdev, &outhdr.ioprio);
+    virtio_tswap64s(s->vdev, &outhdr.sector);
 
     /* Grab inhdr for later */
     in_size = iov_size(in_iov, in_num);
@@ -338,7 +344,7 @@ static void handle_io(EventNotifier *e)
      * so check again.  There should now be enough resources to process more
      * requests.
      */
-    if (unlikely(vring_more_avail(&s->vring))) {
+    if (unlikely(vring_more_avail(s->vdev, &s->vring))) {
         handle_notify(&s->host_notifier);
     }
 }
