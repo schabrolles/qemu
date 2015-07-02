@@ -884,68 +884,58 @@ static int spapr_phb_hotplug_dma_sync(sPAPRPHBState *sphb)
     return ret;
 }
 
-static bool spapr_phb_vfio_get_devspec_value(PCIDevice *pdev, char **value)
-{
-    char *host;
-    char path[PATH_MAX];
-
-    host = object_property_get_str(OBJECT(pdev), "host", NULL);
-    if (!host) {
-        return false;
-    }
-
-    snprintf(path, sizeof(path), "/sys/bus/pci/devices/%s/devspec", host);
-    g_free(host);
-
-    return g_file_get_contents(path, value, NULL, NULL);
-}
-
 static char *spapr_phb_vfio_get_loc_code(sPAPRPHBState *sphb,  PCIDevice *pdev)
 {
-    char path[PATH_MAX], *buf = NULL;
+    char *path = NULL, *buf = NULL, *host = NULL;
 
-    /* We have a vfio host bridge lets get the path. */
-    if (!spapr_phb_vfio_get_devspec_value(pdev, &buf)) {
-        return NULL;
+    /* Get the PCI VFIO host id */
+    host = object_property_get_str(OBJECT(pdev), "host", NULL);
+    if (!host) {
+        goto err_out;
     }
 
-    snprintf(path, sizeof(path), "/proc/device-tree%s/ibm,loc-code", buf);
+    /* Construct the path of the file that will give us the DT location */
+    path = g_strdup_printf("/sys/bus/pci/devices/%s/devspec", host);
+    g_free(host);
+    if (!path || !g_file_get_contents(path, &buf, NULL, NULL)) {
+        goto err_out;
+    }
+    g_free(path);
+
+    /* Construct and read from host device tree the loc-code */
+    path = g_strdup_printf("/proc/device-tree%s/ibm,loc-code", buf);
     g_free(buf);
-
-    if (g_file_get_contents(path, &buf, NULL, NULL)) {
-        return buf;
-    } else {
-        return NULL;
+    if (!path || !g_file_get_contents(path, &buf, NULL, NULL)) {
+        goto err_out;
     }
+    return buf;
+
+err_out:
+    g_free(path);
+    return NULL;
 }
 
-static char *spapr_phb_get_loc_code(sPAPRPHBState *sphb,  PCIDevice *pdev)
+static char *spapr_phb_get_loc_code(sPAPRPHBState *sphb, PCIDevice *pdev)
 {
-    char *path = g_malloc(PATH_MAX);
+    char *buf;
+    const char *devtype = "qemu";
+    uint32_t busnr = pci_bus_num(PCI_BUS(qdev_get_parent_bus(DEVICE(pdev))));
 
-    if (!path) {
-        return NULL;
+    if (object_dynamic_cast(OBJECT(pdev), "vfio-pci")) {
+        buf = spapr_phb_vfio_get_loc_code(sphb, pdev);
+        if (buf) {
+            return buf;
+        }
+        devtype = "vfio";
     }
-
     /*
-     * For non-vfio devices and failures make up the location code out
-     * of the name, slot and function.
-     *
-     *       qemu_<name>:<phb-index>:<slot>.<fn>
+     * For emulated devices and VFIO-failure case, make up
+     * the loc-code.
      */
-    snprintf(path, PATH_MAX, "qemu_%s:%02d:%02d.%1d", pdev->name,
-             sphb->index, PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
-    return path;
-}
-
-
-static char *spapr_ibm_get_loc_code(sPAPRPHBState *sphb, PCIDevice *pdev)
-{
-    if (object_dynamic_cast(OBJECT(pdev), "vfio-pci") != NULL) {
-        return spapr_phb_vfio_get_loc_code(sphb, pdev);
-    } else {
-        return spapr_phb_get_loc_code(sphb, pdev);
-    }
+    buf = g_strdup_printf("%s_%s:%04x:%02x:%02x.%x",
+                          devtype, pdev->name, sphb->index, busnr,
+                          PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
+    return buf;
 }
 
 /* Macros to operate with address in OF binding to PCI */
@@ -1151,7 +1141,7 @@ static int spapr_populate_pci_child_dt(PCIDevice *dev, void *fdt, int offset,
      * processed by OF beforehand
      */
     _FDT(fdt_setprop_string(fdt, offset, "name", "pci"));
-    buf = spapr_ibm_get_loc_code(phb, dev);
+    buf = spapr_phb_get_loc_code(phb, dev);
     if (buf) {
         _FDT(fdt_setprop_string(fdt, offset, "ibm,loc-code", buf));
         g_free(buf);
