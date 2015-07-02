@@ -288,7 +288,7 @@ static void vfio_spapr_listener_release(VFIOContainer *container)
 
 static void vfio_spapr_listener_release_v2(VFIOContainer *container)
 {
-    memory_listener_unregister(&container->iommu_data.spapr.listener);
+    memory_listener_unregister(&container->iommu_data.spapr.register_listener);
     vfio_spapr_listener_release(container);
 }
 
