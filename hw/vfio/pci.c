@@ -2382,7 +2382,7 @@ static void vfio_map_bar(VFIOPCIDevice *vdev, int nr)
      * potentially insert a direct-mapped subregion before and after it.
      */
     if (vdev->msix && vdev->msix->table_bar == nr) {
-        size = vdev->msix->table_offset & qemu_host_page_mask;
+        size = vdev->msix->table_offset & qemu_real_host_page_mask;
     }
 
     strncat(name, " mmap", sizeof(name) - strlen(name) - 1);
@@ -2395,8 +2395,9 @@ static void vfio_map_bar(VFIOPCIDevice *vdev, int nr)
     if (vdev->msix && vdev->msix->table_bar == nr) {
         uint64_t start;
 
-        start = HOST_PAGE_ALIGN((uint64_t)vdev->msix->table_offset +
-                                (vdev->msix->entries * PCI_MSIX_ENTRY_SIZE));
+        start = REAL_HOST_PAGE_ALIGN((uint64_t)vdev->msix->table_offset +
+                                     (vdev->msix->entries *
+                                      PCI_MSIX_ENTRY_SIZE));
 
         size = start < bar->region.size ? bar->region.size - start : 0;
         strncat(name, " msix-hi", sizeof(name) - strlen(name) - 1);
