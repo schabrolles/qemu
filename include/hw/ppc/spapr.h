@@ -2,6 +2,7 @@
 #define __HW_SPAPR_H__
 
 #include "sysemu/dma.h"
+#include "hw/boards.h"
 #include "hw/ppc/xics.h"
 #include "hw/ppc/spapr_drc.h"
 
@@ -13,6 +14,47 @@ typedef struct sPAPREventLogEntry sPAPREventLogEntry;
 
 #define HPTE64_V_HPTE_DIRTY     0x0000000000000040ULL
 
+typedef struct sPAPRMachineClass sPAPRMachineClass;
+typedef struct sPAPRMachineState sPAPRMachineState;
+
+#define TYPE_SPAPR_MACHINE      "spapr-machine"
+#define SPAPR_MACHINE(obj) \
+    OBJECT_CHECK(sPAPRMachineState, (obj), TYPE_SPAPR_MACHINE)
+#define SPAPR_MACHINE_GET_CLASS(obj) \
+        OBJECT_GET_CLASS(sPAPRMachineClass, obj, TYPE_SPAPR_MACHINE)
+#define SPAPR_MACHINE_CLASS(klass) \
+        OBJECT_CLASS_CHECK(sPAPRMachineClass, klass, TYPE_SPAPR_MACHINE)
+
+/**
+ * sPAPRMachineClass:
+ */
+struct sPAPRMachineClass {
+    /*< private >*/
+    MachineClass parent_class;
+
+    /*< public >*/
+    bool dr_lmb_enabled; /* enable dynamic-reconfig/hotplug of LMBs */
+    bool dr_cpu_enabled; /* enable dynamic-reconfig/hotplug of CPUs */
+};
+
+/**
+ * sPAPRMachineState:
+ */
+struct sPAPRMachineState {
+    /*< private >*/
+    MachineState parent_obj;
+
+    /*< public >*/
+    char *kvm_type;
+    ram_addr_t hotplug_memory_base;
+    MemoryRegion hotplug_memory;
+    bool enforce_aligned_dimm;
+};
+
+
+/**
+ * sPAPRMachineState:
+ */
 typedef struct sPAPREnvironment {
     struct VIOsPAPRBus *vio_bus;
     QLIST_HEAD(, sPAPRPHBState) phbs;
