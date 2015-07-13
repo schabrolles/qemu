@@ -48,7 +48,7 @@
     do { } while (0)
 #endif
 
-static sPAPRConfigureConnectorState *spapr_ccs_find(sPAPREnvironment *spapr,
+static sPAPRConfigureConnectorState *spapr_ccs_find(sPAPRMachineState *spapr,
                                                     uint32_t drc_index)
 {
     sPAPRConfigureConnectorState *ccs = NULL;
@@ -62,14 +62,14 @@ static sPAPRConfigureConnectorState *spapr_ccs_find(sPAPREnvironment *spapr,
     return ccs;
 }
 
-static void spapr_ccs_add(sPAPREnvironment *spapr,
+static void spapr_ccs_add(sPAPRMachineState *spapr,
                           sPAPRConfigureConnectorState *ccs)
 {
     g_assert(!spapr_ccs_find(spapr, ccs->drc_index));
     QTAILQ_INSERT_HEAD(&spapr->ccs_list, ccs, next);
 }
 
-static void spapr_ccs_remove(sPAPREnvironment *spapr,
+static void spapr_ccs_remove(sPAPRMachineState *spapr,
                              sPAPRConfigureConnectorState *ccs)
 {
     QTAILQ_REMOVE(&spapr->ccs_list, ccs, next);
@@ -78,7 +78,7 @@ static void spapr_ccs_remove(sPAPREnvironment *spapr,
 
 void spapr_ccs_reset_hook(void *opaque)
 {
-    sPAPREnvironment *spapr = opaque;
+    sPAPRMachineState *spapr = opaque;
     sPAPRConfigureConnectorState *ccs, *ccs_tmp;
 
     QTAILQ_FOREACH_SAFE(ccs, &spapr->ccs_list, next, ccs_tmp) {
@@ -86,7 +86,7 @@ void spapr_ccs_reset_hook(void *opaque)
     }
 }
 
-static void rtas_display_character(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_display_character(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                    uint32_t token, uint32_t nargs,
                                    target_ulong args,
                                    uint32_t nret, target_ulong rets)
@@ -102,7 +102,7 @@ static void rtas_display_character(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     }
 }
 
-static void rtas_power_off(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_power_off(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                            uint32_t token, uint32_t nargs, target_ulong args,
                            uint32_t nret, target_ulong rets)
 {
@@ -114,7 +114,7 @@ static void rtas_power_off(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
 }
 
-static void rtas_system_reboot(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_system_reboot(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                uint32_t token, uint32_t nargs,
                                target_ulong args,
                                uint32_t nret, target_ulong rets)
@@ -128,7 +128,7 @@ static void rtas_system_reboot(PowerPCCPU *cpu, sPAPREnvironment *spapr,
 }
 
 static void rtas_query_cpu_stopped_state(PowerPCCPU *cpu_,
-                                         sPAPREnvironment *spapr,
+                                         sPAPRMachineState *spapr,
                                          uint32_t token, uint32_t nargs,
                                          target_ulong args,
                                          uint32_t nret, target_ulong rets)
@@ -168,7 +168,7 @@ static void spapr_cpu_set_endianness(PowerPCCPU *cpu)
     }
 }
 
-static void rtas_start_cpu(PowerPCCPU *cpu_, sPAPREnvironment *spapr,
+static void rtas_start_cpu(PowerPCCPU *cpu_, sPAPRMachineState *spapr,
                            uint32_t token, uint32_t nargs,
                            target_ulong args,
                            uint32_t nret, target_ulong rets)
@@ -216,7 +216,7 @@ static void rtas_start_cpu(PowerPCCPU *cpu_, sPAPREnvironment *spapr,
     rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
 }
 
-static void rtas_stop_self(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_stop_self(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                            uint32_t token, uint32_t nargs,
                            target_ulong args,
                            uint32_t nret, target_ulong rets)
@@ -239,7 +239,7 @@ static void rtas_stop_self(PowerPCCPU *cpu, sPAPREnvironment *spapr,
 }
 
 static void rtas_ibm_get_system_parameter(PowerPCCPU *cpu,
-                                          sPAPREnvironment *spapr,
+                                          sPAPRMachineState *spapr,
                                           uint32_t token, uint32_t nargs,
                                           target_ulong args,
                                           uint32_t nret, target_ulong rets)
@@ -274,7 +274,7 @@ static void rtas_ibm_get_system_parameter(PowerPCCPU *cpu,
 }
 
 static void rtas_ibm_set_system_parameter(PowerPCCPU *cpu,
-                                          sPAPREnvironment *spapr,
+                                          sPAPRMachineState *spapr,
                                           uint32_t token, uint32_t nargs,
                                           target_ulong args,
                                           uint32_t nret, target_ulong rets)
@@ -294,7 +294,7 @@ static void rtas_ibm_set_system_parameter(PowerPCCPU *cpu,
 }
 
 static void rtas_ibm_os_term(PowerPCCPU *cpu,
-                            sPAPREnvironment *spapr,
+                            sPAPRMachineState *spapr,
                             uint32_t token, uint32_t nargs,
                             target_ulong args,
                             uint32_t nret, target_ulong rets)
@@ -306,7 +306,7 @@ static void rtas_ibm_os_term(PowerPCCPU *cpu,
     rtas_st(rets, 0, ret);
 }
 
-static void rtas_set_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_set_power_level(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                  uint32_t token, uint32_t nargs,
                                  target_ulong args, uint32_t nret,
                                  target_ulong rets)
@@ -331,7 +331,7 @@ static void rtas_set_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 1, 100);
 }
 
-static void rtas_get_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_get_power_level(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                   uint32_t token, uint32_t nargs,
                                   target_ulong args, uint32_t nret,
                                   target_ulong rets)
@@ -368,7 +368,7 @@ static bool sensor_type_is_dr(uint32_t sensor_type)
     return false;
 }
 
-static void rtas_set_indicator(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_set_indicator(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                uint32_t token, uint32_t nargs,
                                target_ulong args, uint32_t nret,
                                target_ulong rets)
@@ -438,7 +438,7 @@ out_unimplemented:
     rtas_st(rets, 0, RTAS_OUT_NOT_SUPPORTED);
 }
 
-static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                   uint32_t token, uint32_t nargs,
                                   target_ulong args, uint32_t nret,
                                   target_ulong rets)
@@ -492,7 +492,7 @@ static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPREnvironment *spapr,
 #define CC_WA_LEN 4096
 
 static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
-                                         sPAPREnvironment *spapr,
+                                         sPAPRMachineState *spapr,
                                          uint32_t token, uint32_t nargs,
                                          target_ulong args, uint32_t nret,
                                          target_ulong rets)
@@ -613,7 +613,7 @@ static struct rtas_call {
     spapr_rtas_fn fn_wa; /* workaround helper */
 } rtas_table[RTAS_TOKEN_MAX - RTAS_TOKEN_BASE];
 
-target_ulong spapr_rtas_call(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+target_ulong spapr_rtas_call(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                              uint32_t token, uint32_t nargs, target_ulong args,
                              uint32_t nret, target_ulong rets)
 {
@@ -686,7 +686,7 @@ void spapr_rtas_register_wrong_endian(int token, spapr_rtas_fn fn)
     rtas_table[token].fn_wa = fn;
 }
 
-int spapr_rtas_device_tree_setup(sPAPREnvironment *spapr, void *fdt,
+int spapr_rtas_device_tree_setup(sPAPRMachineState *spapr, void *fdt,
                                  hwaddr rtas_addr, hwaddr rtas_size)
 {
     int ret;

@@ -820,7 +820,7 @@ void xics_free(XICSState *icp, int irq, int num)
  * Guest interfaces
  */
 
-static target_ulong h_cppr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_cppr(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                            target_ulong opcode, target_ulong *args)
 {
     CPUState *cs = CPU(cpu);
@@ -830,7 +830,7 @@ static target_ulong h_cppr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
-static target_ulong h_ipi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_ipi(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                           target_ulong opcode, target_ulong *args)
 {
     target_ulong server = get_cpu_index_by_dt_id(args[0]);
@@ -844,7 +844,7 @@ static target_ulong h_ipi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
-static target_ulong h_xirr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_xirr(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                            target_ulong opcode, target_ulong *args)
 {
     CPUState *cs = CPU(cpu);
@@ -854,7 +854,7 @@ static target_ulong h_xirr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
-static target_ulong h_xirr_x(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_xirr_x(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                              target_ulong opcode, target_ulong *args)
 {
     CPUState *cs = CPU(cpu);
@@ -866,7 +866,7 @@ static target_ulong h_xirr_x(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
-static target_ulong h_eoi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_eoi(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                           target_ulong opcode, target_ulong *args)
 {
     CPUState *cs = CPU(cpu);
@@ -876,7 +876,7 @@ static target_ulong h_eoi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
-static target_ulong h_ipoll(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_ipoll(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                             target_ulong opcode, target_ulong *args)
 {
     CPUState *cs = CPU(cpu);
@@ -888,7 +888,7 @@ static target_ulong h_ipoll(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
-static void rtas_set_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_set_xive(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                           uint32_t token,
                           uint32_t nargs, target_ulong args,
                           uint32_t nret, target_ulong rets)
@@ -916,7 +916,7 @@ static void rtas_set_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
 }
 
-static void rtas_get_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_get_xive(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                           uint32_t token,
                           uint32_t nargs, target_ulong args,
                           uint32_t nret, target_ulong rets)
@@ -941,7 +941,7 @@ static void rtas_get_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 2, ics->irqs[nr - ics->offset].priority);
 }
 
-static void rtas_int_off(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_int_off(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                          uint32_t token,
                          uint32_t nargs, target_ulong args,
                          uint32_t nret, target_ulong rets)
@@ -967,7 +967,7 @@ static void rtas_int_off(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
 }
 
-static void rtas_int_on(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_int_on(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                         uint32_t token,
                         uint32_t nargs, target_ulong args,
                         uint32_t nret, target_ulong rets)

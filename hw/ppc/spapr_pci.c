@@ -62,7 +62,7 @@
         }                                                          \
     } while (0)
 
-sPAPRPHBState *spapr_pci_find_phb(sPAPREnvironment *spapr, uint64_t buid)
+sPAPRPHBState *spapr_pci_find_phb(sPAPRMachineState *spapr, uint64_t buid)
 {
     sPAPRPHBState *sphb;
 
@@ -76,7 +76,7 @@ sPAPRPHBState *spapr_pci_find_phb(sPAPREnvironment *spapr, uint64_t buid)
     return NULL;
 }
 
-PCIDevice *spapr_pci_find_dev(sPAPREnvironment *spapr, uint64_t buid,
+PCIDevice *spapr_pci_find_dev(sPAPRMachineState *spapr, uint64_t buid,
                               uint32_t config_addr)
 {
     sPAPRPHBState *sphb = spapr_pci_find_phb(spapr, buid);
@@ -97,7 +97,7 @@ static uint32_t rtas_pci_cfgaddr(uint32_t arg)
     return ((arg >> 20) & 0xf00) | (arg & 0xff);
 }
 
-static void finish_read_pci_config(sPAPREnvironment *spapr, uint64_t buid,
+static void finish_read_pci_config(sPAPRMachineState *spapr, uint64_t buid,
                                    uint32_t addr, uint32_t size,
                                    target_ulong rets)
 {
@@ -127,7 +127,7 @@ static void finish_read_pci_config(sPAPREnvironment *spapr, uint64_t buid,
     rtas_st(rets, 1, val);
 }
 
-static void rtas_ibm_read_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_ibm_read_pci_config(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                      uint32_t token, uint32_t nargs,
                                      target_ulong args,
                                      uint32_t nret, target_ulong rets)
@@ -147,7 +147,7 @@ static void rtas_ibm_read_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     finish_read_pci_config(spapr, buid, addr, size, rets);
 }
 
-static void rtas_read_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_read_pci_config(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                  uint32_t token, uint32_t nargs,
                                  target_ulong args,
                                  uint32_t nret, target_ulong rets)
@@ -165,7 +165,7 @@ static void rtas_read_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     finish_read_pci_config(spapr, 0, addr, size, rets);
 }
 
-static void finish_write_pci_config(sPAPREnvironment *spapr, uint64_t buid,
+static void finish_write_pci_config(sPAPRMachineState *spapr, uint64_t buid,
                                     uint32_t addr, uint32_t size,
                                     uint32_t val, target_ulong rets)
 {
@@ -193,7 +193,7 @@ static void finish_write_pci_config(sPAPREnvironment *spapr, uint64_t buid,
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
 }
 
-static void rtas_ibm_write_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_ibm_write_pci_config(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                       uint32_t token, uint32_t nargs,
                                       target_ulong args,
                                       uint32_t nret, target_ulong rets)
@@ -214,7 +214,7 @@ static void rtas_ibm_write_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     finish_write_pci_config(spapr, buid, addr, size, val, rets);
 }
 
-static void rtas_write_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_write_pci_config(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                   uint32_t token, uint32_t nargs,
                                   target_ulong args,
                                   uint32_t nret, target_ulong rets)
@@ -263,7 +263,7 @@ static void spapr_msi_setmsg(PCIDevice *pdev, hwaddr addr, bool msix,
     }
 }
 
-static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                 uint32_t token, uint32_t nargs,
                                 target_ulong args, uint32_t nret,
                                 target_ulong rets)
@@ -381,7 +381,7 @@ out:
 }
 
 static void rtas_ibm_query_interrupt_source_number(PowerPCCPU *cpu,
-                                                   sPAPREnvironment *spapr,
+                                                   sPAPRMachineState *spapr,
                                                    uint32_t token,
                                                    uint32_t nargs,
                                                    target_ulong args,
@@ -422,7 +422,7 @@ static void rtas_ibm_query_interrupt_source_number(PowerPCCPU *cpu,
 }
 
 static void rtas_ibm_set_eeh_option(PowerPCCPU *cpu,
-                                    sPAPREnvironment *spapr,
+                                    sPAPRMachineState *spapr,
                                     uint32_t token, uint32_t nargs,
                                     target_ulong args, uint32_t nret,
                                     target_ulong rets)
@@ -461,7 +461,7 @@ param_error_exit:
 }
 
 static void rtas_ibm_get_config_addr_info2(PowerPCCPU *cpu,
-                                           sPAPREnvironment *spapr,
+                                           sPAPRMachineState *spapr,
                                            uint32_t token, uint32_t nargs,
                                            target_ulong args, uint32_t nret,
                                            target_ulong rets)
@@ -511,7 +511,7 @@ param_error_exit:
 }
 
 static void rtas_ibm_read_slot_reset_state2(PowerPCCPU *cpu,
-                                            sPAPREnvironment *spapr,
+                                            sPAPRMachineState *spapr,
                                             uint32_t token, uint32_t nargs,
                                             target_ulong args, uint32_t nret,
                                             target_ulong rets)
@@ -549,7 +549,7 @@ param_error_exit:
 }
 
 static void rtas_ibm_set_slot_reset(PowerPCCPU *cpu,
-                                    sPAPREnvironment *spapr,
+                                    sPAPRMachineState *spapr,
                                     uint32_t token, uint32_t nargs,
                                     target_ulong args, uint32_t nret,
                                     target_ulong rets)
@@ -579,7 +579,7 @@ param_error_exit:
 }
 
 static void rtas_ibm_configure_pe(PowerPCCPU *cpu,
-                                  sPAPREnvironment *spapr,
+                                  sPAPRMachineState *spapr,
                                   uint32_t token, uint32_t nargs,
                                   target_ulong args, uint32_t nret,
                                   target_ulong rets)
@@ -608,7 +608,7 @@ param_error_exit:
 
 /* To support it later */
 static void rtas_ibm_slot_error_detail(PowerPCCPU *cpu,
-                                       sPAPREnvironment *spapr,
+                                       sPAPRMachineState *spapr,
                                        uint32_t token, uint32_t nargs,
                                        target_ulong args, uint32_t nret,
                                        target_ulong rets)
@@ -693,6 +693,7 @@ static PCIINTxRoute spapr_route_intx_pin_to_irq(void *opaque, int pin)
 static void spapr_msi_write(void *opaque, hwaddr addr,
                             uint64_t data, unsigned size)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     uint32_t irq = data;
 
     trace_spapr_pci_msi_write(addr, data, irq);
@@ -1316,6 +1317,7 @@ static void spapr_phb_hot_unplug_child(HotplugHandler *plug_handler,
 
 static void spapr_phb_realize(DeviceState *dev, Error **errp)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     SysBusDevice *s = SYS_BUS_DEVICE(dev);
     sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(s);
     PCIHostState *phb = PCI_HOST_BRIDGE(s);
@@ -1662,7 +1664,7 @@ static const TypeInfo spapr_phb_info = {
     }
 };
 
-PCIHostState *spapr_create_phb(sPAPREnvironment *spapr, int index)
+PCIHostState *spapr_create_phb(sPAPRMachineState *spapr, int index)
 {
     DeviceState *dev;
 
@@ -1969,6 +1971,7 @@ static int spapr_switch_one_vga(DeviceState *dev, void *opaque)
 
 void spapr_pci_switch_vga(bool big_endian)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     sPAPRPHBState *sphb;
 
     /*

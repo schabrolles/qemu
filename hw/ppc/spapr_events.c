@@ -238,6 +238,7 @@ void spapr_events_fdt_skel(void *fdt, uint32_t check_exception_irq)
 
 static void rtas_event_log_queue(int log_type, void *data, bool exception)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     sPAPREventLogEntry *entry = g_new(sPAPREventLogEntry, 1);
 
     g_assert(data);
@@ -249,6 +250,7 @@ static void rtas_event_log_queue(int log_type, void *data, bool exception)
 
 static sPAPREventLogEntry *rtas_event_log_dequeue(uint32_t event_mask, bool exception)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     sPAPREventLogEntry *entry = NULL;
 
     /* we only queue EPOW events atm. */
@@ -277,6 +279,7 @@ static sPAPREventLogEntry *rtas_event_log_dequeue(uint32_t event_mask, bool exce
 
 static bool rtas_event_log_contains(uint32_t event_mask, bool exception)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     sPAPREventLogEntry *entry = NULL;
 
     /* we only queue EPOW events atm. */
@@ -313,6 +316,7 @@ static void spapr_init_v6hdr(struct rtas_event_log_v6 *v6hdr)
 static void spapr_init_maina(struct rtas_event_log_v6_maina *maina,
                              int section_count)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     struct tm tm;
     int year;
 
@@ -335,7 +339,7 @@ static void spapr_init_maina(struct rtas_event_log_v6_maina *maina,
 
 static void spapr_powerdown_req(Notifier *n, void *opaque)
 {
-    sPAPREnvironment *spapr = container_of(n, sPAPREnvironment, epow_notifier);
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     struct rtas_error_log *hdr;
     struct rtas_event_log_v6 *v6hdr;
     struct rtas_event_log_v6_maina *maina;
@@ -383,6 +387,7 @@ static void spapr_powerdown_req(Notifier *n, void *opaque)
 
 static void spapr_hotplug_req_event(sPAPRDRConnector *drc, uint8_t hp_action)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     struct hp_log_full *new_hp;
     struct rtas_error_log *hdr;
     struct rtas_event_log_v6 *v6hdr;
@@ -457,7 +462,7 @@ void spapr_hotplug_req_remove_event(sPAPRDRConnector *drc)
     spapr_hotplug_req_event(drc, RTAS_LOG_V6_HP_ACTION_REMOVE);
 }
 
-static void check_exception(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void check_exception(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                             uint32_t token, uint32_t nargs,
                             target_ulong args,
                             uint32_t nret, target_ulong rets)
@@ -512,7 +517,7 @@ out_no_events:
     rtas_st(rets, 0, RTAS_OUT_NO_ERRORS_FOUND);
 }
 
-static void event_scan(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void event_scan(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                        uint32_t token, uint32_t nargs,
                        target_ulong args,
                        uint32_t nret, target_ulong rets)
@@ -552,7 +557,7 @@ out_no_events:
     rtas_st(rets, 0, RTAS_OUT_NO_ERRORS_FOUND);
 }
 
-void spapr_events_init(sPAPREnvironment *spapr)
+void spapr_events_init(sPAPRMachineState *spapr)
 {
     QTAILQ_INIT(&spapr->pending_events);
     spapr->check_exception_irq = xics_alloc(spapr->icp, 0, 0, false);

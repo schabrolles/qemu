@@ -95,7 +95,6 @@
 
 #define HTAB_SIZE(spapr)        (1ULL << ((spapr)->htab_shift))
 
-sPAPREnvironment *spapr;
 static int smp_max_cores, smp_nr_sockets;
 
 static XICSState *try_create_xics(const char *type, int nr_servers,
@@ -194,7 +193,7 @@ static int spapr_fixup_cpu_numa_dt(void *fdt, int offset, CPUState *cs)
     return ret;
 }
 
-static int spapr_fixup_cpu_dt(void *fdt, sPAPREnvironment *spapr)
+static int spapr_fixup_cpu_dt(void *fdt, sPAPRMachineState *spapr)
 {
     int ret = 0, offset, cpus_offset;
     CPUState *cs;
@@ -525,7 +524,7 @@ static int spapr_populate_memory_node(void *fdt, int nodeid, hwaddr start,
     return off;
 }
 
-static int spapr_populate_memory(sPAPREnvironment *spapr, void *fdt)
+static int spapr_populate_memory(sPAPRMachineState *spapr, void *fdt)
 {
     hwaddr mem_start, node_size;
     int i, nb_nodes = nb_numa_nodes;
@@ -578,7 +577,7 @@ static int spapr_populate_memory(sPAPREnvironment *spapr, void *fdt)
  * Refer to docs/specs/ppc-spapr-hotplug.txt for the documentation
  * of this device tree node.
  */
-static int spapr_populate_drconf_memory(sPAPREnvironment *spapr, void *fdt)
+static int spapr_populate_drconf_memory(sPAPRMachineState *spapr, void *fdt)
 {
     int ret, i, offset;
     uint64_t lmb_size = SPAPR_MEMORY_BLOCK_SIZE;
@@ -672,8 +671,9 @@ out:
     return ret;
 }
 
-int spapr_h_cas_compose_response(target_ulong addr, target_ulong size,
-                                bool cpu_update, bool memory_update)
+int spapr_h_cas_compose_response(sPAPRMachineState *spapr,
+                                 target_ulong addr, target_ulong size,
+                                 bool cpu_update, bool memory_update)
 {
     void *fdt, *fdt_skel;
     sPAPRDeviceTreeUpdateHeader hdr = { .version_id = 1 };
@@ -718,7 +718,8 @@ int spapr_h_cas_compose_response(target_ulong addr, target_ulong size,
     return 0;
 }
 
-static void spapr_populate_cpu_dt(CPUState *cs, void *fdt, int offset)
+static void spapr_populate_cpu_dt(sPAPRMachineState *spapr,
+                                  CPUState *cs, void *fdt, int offset)
 {
     PowerPCCPU *cpu = POWERPC_CPU(cs);
     CPUPPCState *env = &cpu->env;
@@ -821,7 +822,7 @@ static void spapr_populate_cpu_dt(CPUState *cs, void *fdt, int offset)
                                  ppc_get_compat_smt_threads(cpu)));
 }
 
-static void spapr_populate_cpus_dt_node(void *fdt, sPAPREnvironment *spapr)
+static void spapr_populate_cpus_dt_node(void *fdt, sPAPRMachineState *spapr)
 {
     CPUState *cs;
     int cpus_offset;
@@ -852,12 +853,12 @@ static void spapr_populate_cpus_dt_node(void *fdt, sPAPREnvironment *spapr)
         offset = fdt_add_subnode(fdt, cpus_offset, nodename);
         g_free(nodename);
         _FDT(offset);
-        spapr_populate_cpu_dt(cs, fdt, offset);
+        spapr_populate_cpu_dt(spapr, cs, fdt, offset);
     }
 
 }
 
-static void spapr_finalize_fdt(sPAPREnvironment *spapr,
+static void spapr_finalize_fdt(sPAPRMachineState *spapr,
                                hwaddr fdt_addr,
                                hwaddr rtas_addr,
                                hwaddr rtas_size)
@@ -985,7 +986,7 @@ static void emulate_spapr_hypercall(PowerPCCPU *cpu)
 #define CLEAN_HPTE(_hpte)  ((*(uint64_t *)(_hpte)) &= tswap64(~HPTE64_V_HPTE_DIRTY))
 #define DIRTY_HPTE(_hpte)  ((*(uint64_t *)(_hpte)) |= tswap64(HPTE64_V_HPTE_DIRTY))
 
-static void spapr_reset_htab(sPAPREnvironment *spapr)
+static void spapr_reset_htab(sPAPRMachineState *spapr)
 {
     long shift;
     int index;
@@ -1047,7 +1048,7 @@ static int find_unknown_sysbus_device(SysBusDevice *sbdev, void *opaque)
  * A guest reset will cause spapr->htab_fd to become stale if being used.
  * Reopen the file descriptor to make sure the whole HTAB is properly read.
  */
-static int spapr_check_htab_fd(sPAPREnvironment *spapr)
+static int spapr_check_htab_fd(sPAPRMachineState *spapr)
 {
     int rc = 0;
 
@@ -1067,6 +1068,7 @@ static int spapr_check_htab_fd(sPAPREnvironment *spapr)
 
 static void ppc_spapr_reset(void)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     PowerPCCPU *first_ppc_cpu;
     uint32_t rtas_limit;
 
@@ -1106,6 +1108,7 @@ static void ppc_spapr_reset(void)
 
 static void spapr_cpu_reset(void *opaque)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     PowerPCCPU *cpu = opaque;
     CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
@@ -1134,12 +1137,12 @@ static void spapr_cpu_reset(void *opaque)
      * We have 8 hpte per group, and each hpte is 16 bytes.
      * ie have 128 bytes per hpte entry.
      */
-    env->htab_mask = (1ULL << ((spapr)->htab_shift - 7)) - 1;
+    env->htab_mask = (1ULL << (spapr->htab_shift - 7)) - 1;
     env->spr[SPR_SDR1] = (target_ulong)(uintptr_t)spapr->htab |
         (spapr->htab_shift - 18);
 }
 
-static void spapr_create_nvram(sPAPREnvironment *spapr)
+static void spapr_create_nvram(sPAPRMachineState *spapr)
 {
     DeviceState *dev = qdev_create(&spapr->vio_bus->bus, "spapr-nvram");
     DriveInfo *dinfo = drive_get(IF_PFLASH, 0, 0);
@@ -1153,7 +1156,7 @@ static void spapr_create_nvram(sPAPREnvironment *spapr)
     spapr->nvram = (struct sPAPRNVRAM *)dev;
 }
 
-static void spapr_rtc_create(sPAPREnvironment *spapr)
+static void spapr_rtc_create(sPAPRMachineState *spapr)
 {
     DeviceState *dev = qdev_create(NULL, TYPE_SPAPR_RTC);
 
@@ -1183,7 +1186,7 @@ static int spapr_vga_init(PCIBus *pci_bus)
 
 static int spapr_post_load(void *opaque, int version_id)
 {
-    sPAPREnvironment *spapr = (sPAPREnvironment *)opaque;
+    sPAPRMachineState *spapr = (sPAPRMachineState *)opaque;
     int err = 0;
 
     /* In earlier versions, there was no seperate qdev for the PAPR
@@ -1212,16 +1215,16 @@ static const VMStateDescription vmstate_spapr = {
         VMSTATE_UNUSED_BUFFER(version_before_3, 0, 4),
 
         /* RTC offset */
-        VMSTATE_UINT64_TEST(rtc_offset, sPAPREnvironment, version_before_3),
+        VMSTATE_UINT64_TEST(rtc_offset, sPAPRMachineState, version_before_3),
 
-        VMSTATE_PPC_TIMEBASE_V(tb, sPAPREnvironment, 2),
+        VMSTATE_PPC_TIMEBASE_V(tb, sPAPRMachineState, 2),
         VMSTATE_END_OF_LIST()
     },
 };
 
 static int htab_save_setup(QEMUFile *f, void *opaque)
 {
-    sPAPREnvironment *spapr = opaque;
+    sPAPRMachineState *spapr = opaque;
 
     /* "Iteration" header */
     qemu_put_be32(f, spapr->htab_shift);
@@ -1245,7 +1248,7 @@ static int htab_save_setup(QEMUFile *f, void *opaque)
     return 0;
 }
 
-static void htab_save_first_pass(QEMUFile *f, sPAPREnvironment *spapr,
+static void htab_save_first_pass(QEMUFile *f, sPAPRMachineState *spapr,
                                  int64_t max_ns)
 {
     int htabslots = HTAB_SIZE(spapr) / HASH_PTE_SIZE_64;
@@ -1295,7 +1298,7 @@ static void htab_save_first_pass(QEMUFile *f, sPAPREnvironment *spapr,
     spapr->htab_save_index = index;
 }
 
-static int htab_save_later_pass(QEMUFile *f, sPAPREnvironment *spapr,
+static int htab_save_later_pass(QEMUFile *f, sPAPRMachineState *spapr,
                                 int64_t max_ns)
 {
     bool final = max_ns < 0;
@@ -1377,7 +1380,7 @@ static int htab_save_later_pass(QEMUFile *f, sPAPREnvironment *spapr,
 
 static int htab_save_iterate(QEMUFile *f, void *opaque)
 {
-    sPAPREnvironment *spapr = opaque;
+    sPAPRMachineState *spapr = opaque;
     int rc = 0;
 
     /* Iteration header */
@@ -1412,7 +1415,7 @@ static int htab_save_iterate(QEMUFile *f, void *opaque)
 
 static int htab_save_complete(QEMUFile *f, void *opaque)
 {
-    sPAPREnvironment *spapr = opaque;
+    sPAPRMachineState *spapr = opaque;
 
     /* Iteration header */
     qemu_put_be32(f, 0);
@@ -1447,7 +1450,7 @@ static int htab_save_complete(QEMUFile *f, void *opaque)
 
 static int htab_load(QEMUFile *f, void *opaque, int version_id)
 {
-    sPAPREnvironment *spapr = opaque;
+    sPAPRMachineState *spapr = opaque;
     uint32_t section_hdr;
     int fd = -1;
 
@@ -1554,6 +1557,7 @@ static void spapr_drc_reset(void *opaque)
 static void spapr_cpu_init(PowerPCCPU *cpu)
 {
     CPUPPCState *env = &cpu->env;
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
 
     /* Set time-base frequency to 512 MHz */
     cpu_ppc_tb_init(env, TIMEBASE_FREQ);
@@ -1581,6 +1585,8 @@ static void spapr_cpu_init(PowerPCCPU *cpu)
 
 static void spapr_cpu_destroy(PowerPCCPU *cpu)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+
     xics_cpu_destroy(spapr->icp, cpu);
     qemu_unregister_reset(spapr_cpu_reset, cpu);
 }
@@ -1629,7 +1635,7 @@ static void spapr_sanitize_cpu_topology(Error **errp)
     smp_cores_per_socket = smp_nr_cores/smp_nr_sockets;
 }
 
-static void spapr_create_lmb_dr_connectors(sPAPREnvironment *spapr)
+static void spapr_create_lmb_dr_connectors(sPAPRMachineState *spapr)
 {
     uint64_t lmb_size = SPAPR_MEMORY_BLOCK_SIZE;
     uint32_t nr_rma_lmbs = spapr->rma_size/lmb_size;
@@ -1658,6 +1664,7 @@ static void spapr_create_lmb_dr_connectors(sPAPREnvironment *spapr)
 static void ppc_spapr_init(MachineState *machine)
 {
     sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(machine);
+    sPAPRMachineState *spapr = SPAPR_MACHINE(machine);
     ram_addr_t ram_size = machine->ram_size;
     const char *kernel_filename = machine->kernel_filename;
     const char *kernel_cmdline = machine->kernel_cmdline;
@@ -1681,7 +1688,6 @@ static void ppc_spapr_init(MachineState *machine)
 
     msi_supported = true;
 
-    spapr = g_malloc0(sizeof(*spapr));
     QLIST_INIT(&spapr->phbs);
 
     cpu_ppc_hypercall = emulate_spapr_hypercall;
@@ -1952,6 +1958,9 @@ static void ppc_spapr_init(MachineState *machine)
 
     spapr->entry_point = 0x100;
 
+    /* FIXME: Should register things through the MachineState's qdev
+     * interface, this is a legacy from the sPAPREnvironment structure
+     * which predated MachineState but had a similar function */
     vmstate_register(NULL, 0, &vmstate_spapr, spapr);
     register_savevm_live(NULL, "spapr/htab", -1, 1,
                          &savevm_htab_handlers, spapr);
@@ -2051,17 +2060,17 @@ static char *spapr_get_fw_dev_path(FWPathProvider *p, BusState *bus,
 
 static char *spapr_get_kvm_type(Object *obj, Error **errp)
 {
-    sPAPRMachineState *sm = SPAPR_MACHINE(obj);
+    sPAPRMachineState *spapr = SPAPR_MACHINE(obj);
 
-    return g_strdup(sm->kvm_type);
+    return g_strdup(spapr->kvm_type);
 }
 
 static void spapr_set_kvm_type(Object *obj, const char *value, Error **errp)
 {
-    sPAPRMachineState *sm = SPAPR_MACHINE(obj);
+    sPAPRMachineState *spapr = SPAPR_MACHINE(obj);
 
-    g_free(sm->kvm_type);
-    sm->kvm_type = g_strdup(value);
+    g_free(spapr->kvm_type);
+    spapr->kvm_type = g_strdup(value);
 }
 
 static void spapr_machine_initfn(Object *obj)
@@ -2230,8 +2239,9 @@ out:
     error_propagate(errp, local_err);
 }
 
-static void *spapr_populate_hotplug_cpu_dt(DeviceState *dev, CPUState *cs,
-                                            int *fdt_offset)
+static void *spapr_populate_hotplug_cpu_dt(sPAPRMachineState *spapr,
+                                           DeviceState *dev, CPUState *cs,
+                                           int *fdt_offset)
 {
     PowerPCCPU *cpu = POWERPC_CPU(cs);
     DeviceClass *dc = DEVICE_GET_CLASS(cs);
@@ -2244,7 +2254,7 @@ static void *spapr_populate_hotplug_cpu_dt(DeviceState *dev, CPUState *cs,
     nodename = g_strdup_printf("%s@%x", dc->fw_name, id);
     offset = fdt_add_subnode(fdt, 0, nodename);
 
-    spapr_populate_cpu_dt(cs, fdt, offset);
+    spapr_populate_cpu_dt(spapr, cs, fdt, offset);
     g_free(nodename);
 
     *fdt_offset = offset;
@@ -2329,6 +2339,7 @@ static void spapr_cpu_release(DeviceState *dev, void *opaque)
 static void spapr_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
                             Error **errp)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     CPUState *cs = CPU(dev);
     PowerPCCPU *cpu = POWERPC_CPU(cs);
     int id = ppc_get_vcpu_dt_id(cpu);
@@ -2372,7 +2383,7 @@ static void spapr_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
      * coldplugged CPUs DT entries are setup in spapr_finalize_fdt().
      */
     if (dev->hotplugged) {
-        fdt = spapr_populate_hotplug_cpu_dt(dev, cs, &fdt_offset);
+        fdt = spapr_populate_hotplug_cpu_dt(spapr, dev, cs, &fdt_offset);
     }
 
     drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
@@ -2469,6 +2480,8 @@ static void spapr_cpu_socket_unplug(HotplugHandler *hotplug_dev,
 static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         CPUState *cs = CPU(dev);
         PowerPCCPU *cpu = POWERPC_CPU(cs);
@@ -2525,6 +2538,8 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
 static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU_SOCKET)) {
         if (!spapr->dr_cpu_enabled) {
             error_setg(errp, "CPU hot removal not supported for this version "

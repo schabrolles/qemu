@@ -92,7 +92,7 @@ static uint32_t spapr_query_mask(struct ppc_one_seg_page_size *sps,
 }
 
 static void rtas_ibm_query_pe_dma_window(PowerPCCPU *cpu,
-                                         sPAPREnvironment *spapr,
+                                         sPAPRMachineState *spapr,
                                          uint32_t token, uint32_t nargs,
                                          target_ulong args,
                                          uint32_t nret, target_ulong rets)
@@ -142,7 +142,7 @@ param_error_exit:
 }
 
 static void rtas_ibm_create_pe_dma_window(PowerPCCPU *cpu,
-                                          sPAPREnvironment *spapr,
+                                          sPAPRMachineState *spapr,
                                           uint32_t token, uint32_t nargs,
                                           target_ulong args,
                                           uint32_t nret, target_ulong rets)
@@ -199,7 +199,7 @@ param_error_exit:
 }
 
 static void rtas_ibm_remove_pe_dma_window(PowerPCCPU *cpu,
-                                          sPAPREnvironment *spapr,
+                                          sPAPRMachineState *spapr,
                                           uint32_t token, uint32_t nargs,
                                           target_ulong args,
                                           uint32_t nret, target_ulong rets)
@@ -242,7 +242,7 @@ param_error_exit:
 }
 
 static void rtas_ibm_reset_pe_dma_window(PowerPCCPU *cpu,
-                                         sPAPREnvironment *spapr,
+                                         sPAPRMachineState *spapr,
                                          uint32_t token, uint32_t nargs,
                                          target_ulong args,
                                          uint32_t nret, target_ulong rets)
@@ -284,7 +284,7 @@ param_error_exit:
 #define SPAPR_RTAS_DDW_SWAP(n) rtas_st(rets, (n), bswap32(rtas_ld(rets, (n))))
 
 static void rtas_ibm_query_pe_dma_window_wrong_endian(PowerPCCPU *cpu,
-                                                      sPAPREnvironment *spapr,
+                                                      sPAPRMachineState *spapr,
                                                       uint32_t token,
                                                       uint32_t nargs,
                                                       target_ulong args,
@@ -301,7 +301,7 @@ static void rtas_ibm_query_pe_dma_window_wrong_endian(PowerPCCPU *cpu,
 }
 
 static void rtas_ibm_create_pe_dma_window_wrong_endian(PowerPCCPU *cpu,
-                                                       sPAPREnvironment *spapr,
+                                                       sPAPRMachineState *spapr,
                                                        uint32_t token,
                                                        uint32_t nargs,
                                                        target_ulong args,
