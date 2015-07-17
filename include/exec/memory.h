@@ -152,6 +152,8 @@ struct MemoryRegionIOMMUOps {
     IOMMUTLBEntry (*translate)(MemoryRegion *iommu, hwaddr addr, bool is_write);
     /* Called when VFIO starts/stops using this */
     int (*vfio_notify)(MemoryRegion *iommu, bool attached);
+    /* Returns supported page sizes */
+    uint64_t (*get_page_sizes)(MemoryRegion *iommu);
 };
 
 typedef struct CoalescedMemoryRange CoalescedMemoryRange;
@@ -574,6 +576,15 @@ static inline bool memory_region_is_iommu(MemoryRegion *mr)
     return mr->iommu_ops;
 }
 
+
+/**
+ * memory_region_iommu_get_page_sizes: get supported page sizes in an iommu
+ *
+ * Returns %bitmap of supported page sizes for an iommu.
+ *
+ * @mr: the memory region being queried
+ */
+uint64_t memory_region_iommu_get_page_sizes(MemoryRegion *mr);
 
 /**
  * memory_region_notify_iommu: notify a change in an IOMMU translation entry.

@@ -1506,6 +1506,15 @@ void memory_region_notify_iommu(MemoryRegion *mr,
     notifier_list_notify(&mr->iommu_notify, &entry);
 }
 
+uint64_t memory_region_iommu_get_page_sizes(MemoryRegion *mr)
+{
+    assert(memory_region_is_iommu(mr));
+    if (mr->iommu_ops && mr->iommu_ops->get_page_sizes) {
+        return mr->iommu_ops->get_page_sizes(mr);
+    }
+    return qemu_real_host_page_size;
+}
+
 void memory_region_set_log(MemoryRegion *mr, bool log, unsigned client)
 {
     uint8_t mask = 1 << client;
