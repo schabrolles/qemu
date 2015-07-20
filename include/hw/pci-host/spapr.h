@@ -163,6 +163,6 @@ int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
 int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state);
 int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option);
 int spapr_phb_vfio_eeh_configure(sPAPRPHBState *sphb);
-
+void spapr_phb_vfio_eeh_reenable(sPAPRPHBState *sphb);
 
 #endif /* __HW_SPAPR_PCI_H__ */

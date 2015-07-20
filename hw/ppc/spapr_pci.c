@@ -1572,6 +1572,9 @@ static void spapr_phb_reset(DeviceState *qdev)
 {
     sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(qdev);
 
+    if (sphb->vfio_num > 0) {
+        spapr_phb_vfio_eeh_reenable(sphb);
+    }
     spapr_phb_dma_reset(sphb);
 
     /* Reset the IOMMU state */

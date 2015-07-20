@@ -140,6 +140,22 @@ int spapr_phb_vfio_dma_remove_window(sPAPRPHBState *sphb, uint64_t bus_offset)
     return ret;
 }
 
+void spapr_phb_vfio_eeh_reenable(sPAPRPHBState *sphb)
+{
+    struct vfio_eeh_pe_op op = {
+        .argsz = sizeof(op),
+        .op    = VFIO_EEH_PE_ENABLE
+    };
+
+    /*
+     * The PE might be in frozen state. To reenable the EEH
+     * functionality on it will clean the frozen state, which
+     * ensures that the contained PCI devices will work properly
+     * after reboot.
+     */
+    vfio_container_ioctl(&sphb->iommu_as, VFIO_EEH_PE_OP, &op);
+}
+
 int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
                                   PCIDevice *pdev, int option)
 {
