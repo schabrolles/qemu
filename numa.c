@@ -64,6 +64,13 @@ uint32_t get_numa_node(ram_addr_t addr, Error **errp)
     MemoryDeviceInfoList **prev = &info_list;
     MemoryDeviceInfoList *info;
 
+    /* For non NUMA configurations, check if the addr falls under node 0 */
+    if (!nb_numa_nodes) {
+        if (addr >= numa_info[0].mem_start && addr < numa_info[0].mem_end) {
+            return 0;
+        }
+    }
+
     for (i = 0; i < nb_numa_nodes; i++) {
         if (addr >= numa_info[i].mem_start && addr < numa_info[i].mem_end) {
             return i;
@@ -360,6 +367,9 @@ void parse_numa_opts(MachineClass *mc)
         }
 
         validate_numa_cpus();
+    } else {
+            numa_info[0].mem_end = ram_size;
+            numa_set_mem_address(0);
     }
 }
 
