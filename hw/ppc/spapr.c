@@ -880,8 +880,20 @@ static void spapr_finalize_fdt(sPAPRMachineState *spapr,
      * Add memory@0 node to represent RMA. Rest of the memory is either
      * represented by memory nodes or ibm,dynamic-reconfiguration-memory
      * node later during ibm,client-architecture-support call.
+     *
+     * If NUMA is configured, ensure that memory@0 ends up in the
+     * first memory-less node.
      */
-    spapr_populate_memory_node(fdt, 0, 0, spapr->rma_size);
+    if (nb_numa_nodes) {
+        for (i = 0; i < nb_numa_nodes; ++i) {
+            if (numa_info[i].node_mem) {
+                spapr_populate_memory_node(fdt, i, 0, spapr->rma_size);
+                break;
+            }
+        }
+    } else {
+        spapr_populate_memory_node(fdt, 0, 0, spapr->rma_size);
+    }
 
     ret = spapr_populate_vdevice(spapr->vio_bus, fdt);
     if (ret < 0) {
