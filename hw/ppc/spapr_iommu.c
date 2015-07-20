@@ -60,6 +60,20 @@ sPAPRTCETable *spapr_tce_find_by_liobn(target_ulong liobn)
     return NULL;
 }
 
+static IOMMUAccessFlags spapr_tce_iommu_access_flags(uint64_t tce)
+{
+    switch (tce & SPAPR_TCE_RW) {
+    case SPAPR_TCE_FAULT:
+        return IOMMU_NONE;
+    case SPAPR_TCE_RO:
+        return IOMMU_RO;
+    case SPAPR_TCE_WO:
+        return IOMMU_WO;
+    default: /* SPAPR_TCE_RW */
+        return IOMMU_RW;
+    }
+}
+
 static uint64_t *spapr_tce_alloc_table(uint32_t liobn,
                                        uint32_t nb_table,
                                        uint64_t bus_offset,
@@ -115,7 +129,7 @@ static IOMMUTLBEntry spapr_tce_translate_iommu(MemoryRegion *iommu, hwaddr addr,
         ret.iova = addr & page_mask;
         ret.translated_addr = tce & page_mask;
         ret.addr_mask = ~page_mask;
-        ret.perm = tce & IOMMU_RW;
+        ret.perm = spapr_tce_iommu_access_flags(tce);
     }
     trace_spapr_iommu_xlate(tcet->liobn, addr, ret.iova, ret.perm,
                             ret.addr_mask);
@@ -325,7 +339,7 @@ static target_ulong put_tce_emu(sPAPRTCETable *tcet, target_ulong ioba,
     entry.iova = ioba & page_mask;
     entry.translated_addr = tce & page_mask;
     entry.addr_mask = ~page_mask;
-    entry.perm = tce & IOMMU_RW;
+    entry.perm = spapr_tce_iommu_access_flags(tce);
     memory_region_notify_iommu(&tcet->iommu, entry);
 
     return H_SUCCESS;
