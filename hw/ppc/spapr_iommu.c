@@ -524,8 +524,9 @@ static int spapr_tce_do_replay(sPAPRTCETable *tcet, uint64_t *table)
 
     for (i = 0; i < tcet->nb_table; ++i, ioba += pgsz) {
         ret = put_tce_emu(tcet, ioba, table[i]);
-        if (ret)
+        if (ret) {
             break;
+        }
     }
 
     return ret;

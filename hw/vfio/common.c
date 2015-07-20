@@ -822,8 +822,7 @@ static int vfio_container_do_ioctl(AddressSpace *as,
     return ret;
 }
 
-int vfio_container_ioctl(AddressSpace *as,
-                         int req, void *param)
+int vfio_container_ioctl(AddressSpace *as, int req, void *param)
 {
     /* We allow only certain ioctls to the container */
     switch (req) {

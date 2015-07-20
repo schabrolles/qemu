@@ -154,8 +154,7 @@ int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
         return RTAS_OUT_PARAM_ERROR;
     }
 
-    ret = vfio_container_ioctl(&sphb->iommu_as,
-                               VFIO_EEH_PE_OP, &op);
+    ret = vfio_container_ioctl(&sphb->iommu_as, VFIO_EEH_PE_OP, &op);
     if (ret < 0) {
         return RTAS_OUT_HW_ERROR;
     }
@@ -169,8 +168,7 @@ int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state)
     int ret;
 
     op.op = VFIO_EEH_PE_GET_STATE;
-    ret = vfio_container_ioctl(&sphb->iommu_as,
-                               VFIO_EEH_PE_OP, &op);
+    ret = vfio_container_ioctl(&sphb->iommu_as, VFIO_EEH_PE_OP, &op);
     if (ret < 0) {
         return RTAS_OUT_PARAM_ERROR;
     }
@@ -198,8 +196,7 @@ int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option)
         return RTAS_OUT_PARAM_ERROR;
     }
 
-    ret = vfio_container_ioctl(&sphb->iommu_as,
-                               VFIO_EEH_PE_OP, &op);
+    ret = vfio_container_ioctl(&sphb->iommu_as, VFIO_EEH_PE_OP, &op);
     if (ret < 0) {
         return RTAS_OUT_HW_ERROR;
     }
@@ -213,8 +210,7 @@ int spapr_phb_vfio_eeh_configure(sPAPRPHBState *sphb)
     int ret;
 
     op.op = VFIO_EEH_PE_CONFIGURE;
-    ret = vfio_container_ioctl(&sphb->iommu_as,
-                               VFIO_EEH_PE_OP, &op);
+    ret = vfio_container_ioctl(&sphb->iommu_as, VFIO_EEH_PE_OP, &op);
     if (ret < 0) {
         return RTAS_OUT_PARAM_ERROR;
     }
