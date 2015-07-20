@@ -641,7 +641,8 @@ int spapr_dma_dt(void *fdt, int node_off, const char *propname,
 int spapr_tcet_dma_dt(void *fdt, int node_off, const char *propname,
                       sPAPRTCETable *tcet);
 int spapr_tce_replay(sPAPRTCETable *tcet);
-int spapr_tce_realloc_userspace(sPAPRTCETable *tcet, bool replay);
+int spapr_tce_realloc(sPAPRTCETable *tcet, bool vfio_accel,
+                      bool force_userspace);
 void spapr_pci_switch_vga(bool big_endian);
 void spapr_hotplug_req_add_event(sPAPRDRConnector *drc);
 void spapr_hotplug_req_remove_event(sPAPRDRConnector *drc);

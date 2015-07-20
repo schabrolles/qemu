@@ -553,26 +553,46 @@ int spapr_tce_replay(sPAPRTCETable *tcet)
     return spapr_tce_do_replay(tcet, tcet->table);
 }
 
-int spapr_tce_realloc_userspace(sPAPRTCETable *tcet, bool replay)
+int spapr_tce_realloc(sPAPRTCETable *tcet, bool vfio_accel,
+                      bool force_userspace)
 {
-    int ret = 0, oldfd;
+    int ret, oldfd;
     uint64_t *oldtable;
 
-    oldtable = tcet->table;
-    oldfd = tcet->fd;
+    if (force_userspace) {
+        oldtable = tcet->table;
+        oldfd = tcet->fd;
+    } else {
+        unsigned long cb = tcet->nb_table * sizeof(uint64_t);
+        /*
+         * We might be trying to reallocate KVM table.
+         * KVM_CREATE_SPAPR_TCE handler checks for LIOBN and fails if
+         * is registered. Store KVM table locally and destroy the KVM table.
+         */
+        oldtable = g_malloc0(cb);
+        oldfd = -1;
+        memcpy(oldtable, tcet->table, cb);
+        spapr_tce_free_table(tcet->table, tcet->fd, tcet->nb_table);
+    }
+
     tcet->table = spapr_tce_alloc_table(tcet->liobn,
                                         tcet->nb_table,
                                         tcet->bus_offset,
                                         tcet->page_shift,
                                         &tcet->fd,
-                                        false,
-                                        true); /* force_userspace */
-
-    if (replay) {
-        ret = spapr_tce_do_replay(tcet, oldtable);
+                                        vfio_accel,
+                                        force_userspace);
+    if (!tcet->table) {
+        return -ENOMEM;
     }
 
-    spapr_tce_free_table(oldtable, oldfd, tcet->nb_table);
+    ret = spapr_tce_do_replay(tcet, oldtable);
+
+    if (force_userspace) {
+        spapr_tce_free_table(oldtable, oldfd, tcet->nb_table);
+    } else {
+        g_free(oldtable);
+    }
 
     return ret;
 }

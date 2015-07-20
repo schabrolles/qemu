@@ -757,7 +757,7 @@ static int spapr_phb_dma_update(Object *child, void *opaque)
              * VFIO acceleration is not possible.
              * Reallocate table in userspace and replay mappings.
              */
-            ret = spapr_tce_realloc_userspace(tcet, true);
+            ret = spapr_tce_realloc(tcet, true, true);
             trace_spapr_pci_dma_realloc_update(tcet->liobn, ret);
         } else {
             /*
@@ -828,7 +828,7 @@ int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
 
     ret = spapr_phb_vfio_dma_enable_kvm_accel(sphb, tcet);
     if (ret) {
-        ret = spapr_tce_realloc_userspace(tcet, true);
+        ret = spapr_tce_realloc(tcet, true, true);
         trace_spapr_pci_dma_realloc_update(tcet->liobn, ret);
     }
 
