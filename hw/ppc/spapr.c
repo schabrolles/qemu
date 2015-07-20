@@ -1660,6 +1660,37 @@ static void spapr_create_lmb_dr_connectors(sPAPRMachineState *spapr)
     }
 }
 
+/*
+ * If RAM size, maxmem size and individual node mem sizes aren't aligned
+ * to SPAPR_MEMORY_BLOCK_SIZE(256MB), then refuse to start the guest
+ * since we can't support such unaligned sizes with DRCONF_MEMORY.
+ */
+static void spapr_validate_node_memory(MachineState *machine)
+{
+    int i;
+
+    if (machine->maxram_size % SPAPR_MEMORY_BLOCK_SIZE ||
+        machine->ram_size % SPAPR_MEMORY_BLOCK_SIZE) {
+        error_report("Can't support memory configuration where RAM size "
+                     "0x" RAM_ADDR_FMT " or maxmem size "
+                     "0x" RAM_ADDR_FMT " isn't aligned to %lld MB",
+                     machine->ram_size, machine->maxram_size,
+                     SPAPR_MEMORY_BLOCK_SIZE/M_BYTE);
+        exit(EXIT_FAILURE);
+    }
+
+    for (i = 0; i < nb_numa_nodes; i++) {
+        if (numa_info[i].node_mem &&
+            numa_info[i].node_mem % SPAPR_MEMORY_BLOCK_SIZE) {
+            error_report("Can't support memory configuration where memory size"
+                         " 0x%" PRIx64 " of node %d isn't aligned to %lld MB",
+                         numa_info[i].node_mem, i,
+                         SPAPR_MEMORY_BLOCK_SIZE/M_BYTE);
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
 /* pSeries LPAR / sPAPR hardware init */
 static void ppc_spapr_init(MachineState *machine)
 {
@@ -1757,6 +1788,10 @@ static void ppc_spapr_init(MachineState *machine)
                                        SPAPR_DR_CONNECTOR_TYPE_CPU, i * smt);
             qemu_register_reset(spapr_drc_reset, drc);
         }
+    }
+
+    if (spapr->dr_lmb_enabled) {
+        spapr_validate_node_memory(machine);
     }
 
     /* init CPUs */
