@@ -86,7 +86,7 @@ struct sPAPRPHBState {
 
     uint32_t dma32_window_start;
     uint32_t dma32_window_size;
-    bool has_vfio;
+    unsigned vfio_num;
     int32_t iommugroupid; /* obsolete */
     bool ddw_enabled;
     uint32_t windows_supported;

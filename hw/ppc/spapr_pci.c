@@ -444,7 +444,7 @@ static void rtas_ibm_set_eeh_option(PowerPCCPU *cpu,
     option = rtas_ld(args, 3);
 
     sphb = spapr_pci_find_phb(spapr, buid);
-    if (!sphb || !sphb->has_vfio) {
+    if (!sphb || (sphb->vfio_num == 0)) {
         goto param_error_exit;
     }
 
@@ -479,7 +479,7 @@ static void rtas_ibm_get_config_addr_info2(PowerPCCPU *cpu,
 
     buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
     sphb = spapr_pci_find_phb(spapr, buid);
-    if (!sphb || !sphb->has_vfio) {
+    if (!sphb || (sphb->vfio_num == 0)) {
         goto param_error_exit;
     }
 
@@ -528,7 +528,7 @@ static void rtas_ibm_read_slot_reset_state2(PowerPCCPU *cpu,
 
     buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
     sphb = spapr_pci_find_phb(spapr, buid);
-    if (!sphb || !sphb->has_vfio) {
+    if (!sphb || (sphb->vfio_num == 0)) {
         goto param_error_exit;
     }
 
@@ -568,7 +568,7 @@ static void rtas_ibm_set_slot_reset(PowerPCCPU *cpu,
     buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
     option = rtas_ld(args, 3);
     sphb = spapr_pci_find_phb(spapr, buid);
-    if (!sphb || !sphb->has_vfio) {
+    if (!sphb || (sphb->vfio_num == 0)) {
         goto param_error_exit;
     }
 
@@ -596,7 +596,7 @@ static void rtas_ibm_configure_pe(PowerPCCPU *cpu,
 
     buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
     sphb = spapr_pci_find_phb(spapr, buid);
-    if (!sphb || !sphb->has_vfio) {
+    if (!sphb || (sphb->vfio_num == 0)) {
         goto param_error_exit;
     }
 
@@ -625,7 +625,7 @@ static void rtas_ibm_slot_error_detail(PowerPCCPU *cpu,
 
     buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
     sphb = spapr_pci_find_phb(spapr, buid);
-    if (!sphb || !sphb->has_vfio) {
+    if (!sphb || (sphb->vfio_num == 0)) {
         goto param_error_exit;
     }
 
@@ -720,75 +720,17 @@ static AddressSpace *spapr_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
     return &phb->iommu_as;
 }
 
-static int spapr_phb_dma_update(Object *child, void *opaque)
-{
-    int ret = 0;
-    uint64_t bus_offset = 0;
-    sPAPRPHBState *sphb = opaque;
-    sPAPRTCETable *tcet = (sPAPRTCETable *)
-        object_dynamic_cast(child, TYPE_SPAPR_TCE_TABLE);
-
-    if (!tcet) {
-        return 0;
-    }
-
-    if (SPAPR_PCI_DMA_WINDOW_NUM(tcet->liobn)) {
-        ret = spapr_phb_vfio_dma_init_window(sphb,
-                                             tcet->page_shift,
-                                             (uint64_t)tcet->nb_table <<
-                                             tcet->page_shift,
-                                             &bus_offset);
-        if (ret) {
-            return ret;
-        }
-        if (bus_offset != tcet->bus_offset) {
-            return -EFAULT;
-        }
-    }
-
-    if (tcet->fd >= 0) {
-        /*
-         * We got first vfio-pci device on accelerated table.
-         * Try binding iommu to liobn in KVM.
-         */
-        ret = spapr_phb_vfio_dma_enable_accel(sphb, tcet->liobn,
-                                              tcet->bus_offset);
-        if (ret) {
-            /*
-             * VFIO acceleration is not possible.
-             * Reallocate table in userspace and replay mappings.
-             */
-            ret = spapr_tce_realloc(tcet, true, true);
-            trace_spapr_pci_dma_realloc_update(tcet->liobn, ret);
-        } else {
-            /*
-             * VFIO acceleration is supported.
-             * Replay mappings for hardware table.
-             */
-            ret = spapr_tce_replay(tcet);
-            trace_spapr_pci_dma_update(tcet->liobn, ret);
-        }
-    } else {
-        /* There was no acceleration, so just replay mappings. */
-        ret = spapr_tce_replay(tcet);
-        trace_spapr_pci_dma_update(tcet->liobn, ret);
-    }
-
-    return 0;
-}
-
 static int spapr_phb_dma_capabilities_update(sPAPRPHBState *sphb)
 {
-    int ret;
-
     sphb->dma32_window_start = 0;
     sphb->dma32_window_size = SPAPR_PCI_DMA32_SIZE;
     sphb->windows_supported = SPAPR_PCI_DMA_MAX_WINDOWS;
     sphb->page_size_mask = (1ULL << 12) | (1ULL << 16) | (1ULL << 24);
     sphb->dma64_window_size = pow2ceil(ram_size);
 
-    ret = spapr_phb_vfio_dma_capabilities_update(sphb);
-    sphb->has_vfio = (ret == 0);
+    if (sphb->vfio_num > 0) {
+        spapr_phb_vfio_dma_capabilities_update(sphb);
+    }
 
     return 0;
 }
@@ -811,7 +753,7 @@ int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
     }
 
     if (sphb->ddw_enabled) {
-        if (sphb->has_vfio) {
+        if (sphb->vfio_num > 0) {
             ret = spapr_phb_vfio_dma_init_window(sphb, page_shift, window_size,
                                                  &bus_offset);
             if (ret) {
@@ -828,9 +770,9 @@ int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
     }
 
     spapr_tce_table_enable(tcet, bus_offset, page_shift, nb_table,
-                           sphb->has_vfio);
+                           sphb->vfio_num > 0);
 
-    if ((tcet->fd < 0) || !sphb->has_vfio) {
+    if ((tcet->fd < 0) || (sphb->vfio_num == 0)) {
         return 0;
     }
 
@@ -851,17 +793,45 @@ int spapr_phb_dma_remove_window(sPAPRPHBState *sphb,
 
     spapr_tce_table_disable(tcet);
 
-    if (sphb->has_vfio && sphb->ddw_enabled) {
+    if ((sphb->vfio_num > 0) && sphb->ddw_enabled) {
         ret = spapr_phb_vfio_dma_remove_window(sphb, bus_offset);
     }
 
     return ret;
 }
 
+static void spapr_phb_walk_devices(PCIBus *bus, PCIDevice *pdev,
+                                          void *opaque)
+{
+    sPAPRPHBState *sphb = opaque;
+    PCIBus *sec_bus;
+
+    if (object_dynamic_cast(OBJECT(pdev), "vfio-pci")) {
+        ++sphb->vfio_num;
+    }
+
+    if ((pci_default_read_config(pdev, PCI_HEADER_TYPE, 1) !=
+         PCI_HEADER_TYPE_BRIDGE)) {
+        return;
+    }
+
+    sec_bus = pci_bridge_get_sec_bus(PCI_BRIDGE(pdev));
+    if (!sec_bus) {
+        return;
+    }
+
+    pci_for_each_device(sec_bus, pci_bus_num(sec_bus),
+                        spapr_phb_walk_devices, sphb);
+}
+
 int spapr_phb_dma_reset(sPAPRPHBState *sphb)
 {
     int i;
     sPAPRTCETable *tcet;
+    PCIBus *bus = PCI_HOST_BRIDGE(sphb)->bus;
+
+    sphb->vfio_num = 0;
+    pci_for_each_device(bus, pci_bus_num(bus), spapr_phb_walk_devices, sphb);
 
     spapr_phb_dma_capabilities_update(sphb);
 
@@ -880,13 +850,70 @@ int spapr_phb_dma_reset(sPAPRPHBState *sphb)
 
 static int spapr_phb_hotplug_dma_sync(sPAPRPHBState *sphb)
 {
-    int ret = 0;
-    bool had_vfio = sphb->has_vfio;
+    int ret = 0, i;
+    sPAPRTCETable *tcet;
+    uint64_t bus_offset = 0;
 
     spapr_phb_dma_capabilities_update(sphb);
 
-    if (!had_vfio && sphb->has_vfio) {
-        object_child_foreach(OBJECT(sphb), spapr_phb_dma_update, sphb);
+    if (sphb->vfio_num > 0) {
+        /*
+         * First vfio-pci device besides in a container with a default 32bit
+         * window. However the PHB might have removed a 32bit window and have
+         * created a 64bit window instead (not in addition) so vfio's window
+         * needs to be removed.
+         */
+        for (i = 0; i < SPAPR_PCI_DMA_MAX_WINDOWS; ++i) {
+            tcet = spapr_tce_find_by_liobn(SPAPR_PCI_LIOBN(sphb->index, i));
+            if (!tcet) {
+                continue;
+            }
+            spapr_phb_vfio_dma_remove_window(sphb, tcet->bus_offset);
+        }
+    }
+
+    for (i = 0; i < SPAPR_PCI_DMA_MAX_WINDOWS; ++i) {
+        tcet = spapr_tce_find_by_liobn(SPAPR_PCI_LIOBN(sphb->index, i));
+        if (!tcet || !tcet->enabled) {
+            continue;
+        }
+        if ((tcet->fd >= 0) && (sphb->vfio_num > 0)) {
+            ret = spapr_phb_vfio_dma_init_window(sphb,
+                                                 tcet->page_shift,
+                                                 (uint64_t)tcet->nb_table <<
+                                                 tcet->page_shift,
+                                                 &bus_offset);
+            if (ret) {
+                break;
+            }
+            if (bus_offset != tcet->bus_offset) {
+                ret = -EFAULT;
+                break;
+            }
+            /*
+             * We got first vfio-pci device on accelerated table.
+             * Try binding iommu to liobn in KVM.
+             */
+            ret = spapr_phb_vfio_dma_enable_accel(sphb, tcet->liobn,
+                                                  tcet->bus_offset);
+            if (ret) {
+                ret = spapr_tce_realloc(tcet, true, true);
+            } else {
+                ret = spapr_tce_replay(tcet);
+            }
+            trace_spapr_pci_dma_realloc_update(tcet->liobn, ret);
+        } else if ((tcet->fd < 0) && (sphb->vfio_num > 0)) {
+            /* There was no acceleration, so just replay mappings. */
+            ret = spapr_tce_replay(tcet);
+            trace_spapr_pci_dma_update(tcet->liobn, ret);
+        } else if ((tcet->fd < 0) && (sphb->vfio_num == 0)) {
+            /* Last vfio-pci device is gone, try enabling in-kernel table */
+            ret = spapr_tce_realloc(tcet, false, false);
+            trace_spapr_pci_dma_update(tcet->liobn, ret);
+        }
+        if (ret) {
+            break;
+        }
     }
 
     return ret;
@@ -1213,11 +1240,26 @@ static void spapr_phb_add_pci_device(sPAPRDRConnector *drc,
     if (dev->hotplugged) {
         fdt = spapr_create_pci_child_dt(phb, pdev, drc_index, drc_name,
                                         &fdt_start_offset);
-        spapr_phb_hotplug_dma_sync(phb);
+        if (!fdt_start_offset) {
+            error_setg(errp, "Failed to create pci child device tree node");
+            goto out;
+        }
+        if (object_dynamic_cast(OBJECT(pdev), "vfio-pci")) {
+            unsigned vfio_num = phb->vfio_num;
+
+            ++phb->vfio_num;
+            if (vfio_num == 0) {
+                if (spapr_phb_hotplug_dma_sync(phb)) {
+                    error_setg(errp, "Failed to create DMA window(s)");
+                    goto out;
+                }
+            }
+        }
     }
 
     drck->attach(drc, DEVICE(pdev),
                  fdt, fdt_start_offset, !dev->hotplugged, errp);
+out:
     if (*errp) {
         g_free(fdt);
     }
@@ -1225,6 +1267,9 @@ static void spapr_phb_add_pci_device(sPAPRDRConnector *drc,
 
 static void spapr_phb_remove_pci_device_cb(DeviceState *dev, void *opaque)
 {
+    bool do_sync = false;
+    sPAPRPHBState *phb = opaque;
+
     /* some version guests do not wait for completion of a device
      * cleanup (generally done asynchronously by the kernel) before
      * signaling to QEMU that the device is safe, but instead sleep
@@ -1236,8 +1281,19 @@ static void spapr_phb_remove_pci_device_cb(DeviceState *dev, void *opaque)
      * an 'idle' state, as the device cleanup code expects.
      */
     pci_device_reset(PCI_DEVICE(dev));
+
+    /* Check if it the last vfio-pci device on a PHB while it is still alive */
+    if (object_dynamic_cast(OBJECT(dev), "vfio-pci")) {
+        --phb->vfio_num;
+        do_sync = phb->vfio_num == 0;
+    }
+
     object_unparent(OBJECT(dev));
-    spapr_phb_hotplug_dma_sync((sPAPRPHBState *)opaque);
+
+    /* Update DMA config, the last vfio-pci might or might not be gone by now */
+    if (do_sync) {
+        spapr_phb_hotplug_dma_sync(phb);
+    }
 }
 
 static void spapr_phb_remove_pci_device(sPAPRDRConnector *drc,
