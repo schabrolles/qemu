@@ -161,10 +161,6 @@ static int spapr_tce_table_post_load(void *opaque, int version_id)
         spapr_vio_set_bypass(tcet->vdev, tcet->bypass);
     }
 
-    if (!tcet->migtable) {
-        return 0;
-    }
-
     if (tcet->enabled) {
         if (!tcet->table) {
             tcet->enabled = false;
