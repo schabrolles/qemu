@@ -91,6 +91,7 @@ struct sPAPRPHBState {
     bool ddw_enabled;
     uint32_t windows_supported;
     uint64_t page_size_mask;
+    uint64_t dma64_window_start;
     uint64_t dma64_window_size;
     uint8_t max_levels;
     uint8_t levels;
@@ -116,11 +117,10 @@ struct sPAPRPHBState {
 
 #define SPAPR_PCI_DMA32_SIZE         0x40000000
 
+#define SPAPR_PCI_DMA_MAX_WINDOWS    2
+
 /* Default 64bit dynamic window offset */
 #define SPAPR_PCI_DMA64_START        0x800000000000000ULL
-
-/* Maximum allowed number of DMA windows for emulated PHB */
-#define SPAPR_PCI_DMA_MAX_WINDOWS    2
 
 static inline qemu_irq spapr_phb_lsi_qirq(struct sPAPRPHBState *phb, int pin)
 {
@@ -154,10 +154,10 @@ int spapr_phb_vfio_dma_init_window(sPAPRPHBState *sphb,
                                    uint32_t page_shift,
                                    uint64_t window_size,
                                    uint64_t *bus_offset);
-int spapr_phb_vfio_dma_enable_kvm_accel(sPAPRPHBState *sphb,
-                                        sPAPRTCETable *tcet);
+int spapr_phb_vfio_dma_enable_accel(sPAPRPHBState *sphb, uint64_t liobn,
+                                    uint64_t start_addr);
 int spapr_phb_vfio_dma_remove_window(sPAPRPHBState *sphb,
-                                     sPAPRTCETable *tcet);
+                                     uint64_t bus_offset);
 int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
                                   PCIDevice *pdev, int option);
 int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state);

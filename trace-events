@@ -1281,8 +1281,10 @@ spapr_pci_rtas_ibm_query_interrupt_source_number(unsigned ioa, unsigned intr) "q
 spapr_pci_msi_write(uint64_t addr, uint64_t data, uint32_t dt_irq) "@%"PRIx64"<=%"PRIx64" IRQ %u"
 spapr_pci_lsi_set(const char *busname, int pin, uint32_t irq) "%s PIN%d IRQ %u"
 spapr_pci_msi_retry(unsigned config_addr, unsigned req_num, unsigned max_irqs) "Guest device at %x asked %u, have only %u"
-spapr_pci_dma_update(uint64_t liobn, long ret) "liobn=%"PRIx64" tcet=%ld"
+spapr_pci_dma_update(uint64_t liobn, long ret) "liobn=%"PRIx64" ret=%ld"
 spapr_pci_dma_realloc_update(uint64_t liobn, long ret) "liobn=%"PRIx64" tcet=%ld"
+spapr_pci_vfio_init_window(int ps, uint64_t ws, uint64_t off) "pageshift=0x%x winsize=0x%"PRIx64" offset=0x%"PRIx64
+spapr_pci_vfio_remove_window(uint64_t off) "offset=%"PRIx64
 
 # hw/pci/pci.c
 pci_update_mappings_del(void *d, uint32_t bus, uint32_t func, uint32_t slot, int bar, uint64_t addr, uint64_t size) "d=%p %02x:%02x.%x %d,%#"PRIx64"+%#"PRIx64

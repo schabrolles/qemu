@@ -19,8 +19,11 @@
 
 #include "hw/ppc/spapr.h"
 #include "hw/pci-host/spapr.h"
-#include "linux/vfio.h"
 #include "hw/vfio/vfio.h"
+
+#ifdef CONFIG_LINUX
+#include "linux/vfio.h"
+#include "trace.h"
 
 static Property spapr_phb_vfio_properties[] = {
     DEFINE_PROP_INT32("iommu", sPAPRPHBState, iommugroupid, -1),
@@ -106,27 +109,32 @@ int spapr_phb_vfio_dma_init_window(sPAPRPHBState *sphb,
     }
     *bus_offset = create.start_addr;
 
+    trace_spapr_pci_vfio_init_window(page_shift, window_size, *bus_offset);
+
     return 0;
 }
 
-int spapr_phb_vfio_dma_enable_kvm_accel(sPAPRPHBState *sphb,
-                                        sPAPRTCETable *tcet)
+int spapr_phb_vfio_dma_enable_accel(sPAPRPHBState *sphb, uint64_t liobn,
+                                    uint64_t start_addr)
 {
-    return vfio_container_spapr_set_liobn(&sphb->iommu_as,
-                                          tcet->liobn, tcet->bus_offset);
+    return vfio_container_spapr_set_liobn(&sphb->iommu_as, liobn, start_addr);
 }
 
-int spapr_phb_vfio_dma_remove_window(sPAPRPHBState *sphb,
-                                            sPAPRTCETable *tcet)
+int spapr_phb_vfio_dma_remove_window(sPAPRPHBState *sphb, uint64_t bus_offset)
 {
     struct vfio_iommu_spapr_tce_remove remove = {
         .argsz = sizeof(remove),
-        .start_addr = tcet->bus_offset
+        .start_addr = bus_offset
     };
     int ret;
 
     ret = vfio_container_ioctl(&sphb->iommu_as,
                                VFIO_IOMMU_SPAPR_TCE_REMOVE, &remove);
+    if (ret) {
+        return ret;
+    }
+
+    trace_spapr_pci_vfio_remove_window(bus_offset);
 
     return ret;
 }
@@ -239,3 +247,55 @@ static void spapr_pci_vfio_register_types(void)
 }
 
 type_init(spapr_pci_vfio_register_types)
+
+#else /* !CONFIG_LINUX */
+
+int spapr_phb_vfio_dma_capabilities_update(sPAPRPHBState *sphb)
+{
+    return -1;
+}
+
+int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
+                                  PCIDevice *pdev, int option)
+{
+    return RTAS_OUT_HW_ERROR;
+}
+
+int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state)
+{
+    return RTAS_OUT_HW_ERROR;
+}
+
+int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option)
+{
+    return RTAS_OUT_HW_ERROR;
+}
+
+int spapr_phb_vfio_eeh_configure(sPAPRPHBState *sphb)
+{
+    return RTAS_OUT_HW_ERROR;
+}
+
+int spapr_phb_vfio_dma_init_window(sPAPRPHBState *sphb,
+                                   uint32_t page_shift,
+                                   uint64_t window_size,
+                                   uint64_t *bus_offset)
+{
+    return -1;
+}
+
+int spapr_phb_vfio_dma_enable_accel(sPAPRPHBState *sphb, uint64_t liobn,
+                                    uint64_t start_addr)
+{
+    return -1;
+}
+
+int spapr_phb_vfio_dma_remove_window(sPAPRPHBState *sphb, uint64_t bus_offset)
+{
+    return -1;
+}
+
+void spapr_phb_vfio_eeh_reenable(sPAPRPHBState *sphb)
+{
+}
+#endif

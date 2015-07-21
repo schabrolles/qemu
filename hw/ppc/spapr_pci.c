@@ -751,7 +751,8 @@ static int spapr_phb_dma_update(Object *child, void *opaque)
          * We got first vfio-pci device on accelerated table.
          * Try binding iommu to liobn in KVM.
          */
-        ret = spapr_phb_vfio_dma_enable_kvm_accel(sphb, tcet);
+        ret = spapr_phb_vfio_dma_enable_accel(sphb, tcet->liobn,
+                                              tcet->bus_offset);
         if (ret) {
             /*
              * VFIO acceleration is not possible.
@@ -783,7 +784,7 @@ static int spapr_phb_dma_capabilities_update(sPAPRPHBState *sphb)
     sphb->dma32_window_start = 0;
     sphb->dma32_window_size = SPAPR_PCI_DMA32_SIZE;
     sphb->windows_supported = SPAPR_PCI_DMA_MAX_WINDOWS;
-    sphb->page_size_mask = (1 << 12) | (1 << 16) | (1 << 24);
+    sphb->page_size_mask = (1ULL << 12) | (1ULL << 16) | (1ULL << 24);
     sphb->dma64_window_size = pow2ceil(ram_size);
 
     ret = spapr_phb_vfio_dma_capabilities_update(sphb);
@@ -798,7 +799,12 @@ int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
 {
     uint64_t bus_offset = sphb->dma32_window_start;
     sPAPRTCETable *tcet = spapr_tce_find_by_liobn(liobn);
+    uint32_t nb_table = window_size >> page_shift;
     int ret;
+
+    if (!nb_table) {
+        return -1;
+    }
 
     if (SPAPR_PCI_DMA_WINDOW_NUM(liobn) && !sphb->ddw_enabled) {
         return -1;
@@ -806,27 +812,29 @@ int spapr_phb_dma_init_window(sPAPRPHBState *sphb,
 
     if (sphb->ddw_enabled) {
         if (sphb->has_vfio) {
-            ret = spapr_phb_vfio_dma_init_window(sphb,
-                                                 page_shift, window_size,
+            ret = spapr_phb_vfio_dma_init_window(sphb, page_shift, window_size,
                                                  &bus_offset);
             if (ret) {
                 return ret;
             }
         } else if (SPAPR_PCI_DMA_WINDOW_NUM(liobn)) {
-            /* No VFIO so we choose a huge window address */
-            bus_offset = SPAPR_PCI_DMA64_START;
+            /*
+             * There is no VFIO so we choose a huge window address.
+             * If VFIO is added later, spapr_phb_dma_update() will fail
+             * and cause hotplug failure.
+             */
+            bus_offset = sphb->dma64_window_start;
         }
     }
 
-    spapr_tce_table_enable(tcet, bus_offset, page_shift,
-                           window_size >> page_shift,
+    spapr_tce_table_enable(tcet, bus_offset, page_shift, nb_table,
                            sphb->has_vfio);
 
     if ((tcet->fd < 0) || !sphb->has_vfio) {
         return 0;
     }
 
-    ret = spapr_phb_vfio_dma_enable_kvm_accel(sphb, tcet);
+    ret = spapr_phb_vfio_dma_enable_accel(sphb, tcet->liobn, tcet->bus_offset);
     if (ret) {
         ret = spapr_tce_realloc(tcet, true, true);
         trace_spapr_pci_dma_realloc_update(tcet->liobn, ret);
@@ -839,36 +847,33 @@ int spapr_phb_dma_remove_window(sPAPRPHBState *sphb,
                                 sPAPRTCETable *tcet)
 {
     int ret = 0;
+    uint64_t bus_offset = tcet->bus_offset;
+
+    spapr_tce_table_disable(tcet);
 
     if (sphb->has_vfio && sphb->ddw_enabled) {
-        ret = spapr_phb_vfio_dma_remove_window(sphb, tcet);
+        ret = spapr_phb_vfio_dma_remove_window(sphb, bus_offset);
     }
-    spapr_tce_table_disable(tcet);
 
     return ret;
 }
 
-static int spapr_phb_disable_dma_windows(Object *child, void *opaque)
-{
-    sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(opaque);
-    sPAPRTCETable *tcet = (sPAPRTCETable *)
-        object_dynamic_cast(child, TYPE_SPAPR_TCE_TABLE);
-
-    if (tcet) {
-        spapr_phb_dma_remove_window(sphb, tcet);
-    }
-
-    return 0;
-}
-
 int spapr_phb_dma_reset(sPAPRPHBState *sphb)
 {
-    const uint32_t liobn = SPAPR_PCI_LIOBN(sphb->index, 0);
+    int i;
+    sPAPRTCETable *tcet;
 
-    spapr_phb_dma_capabilities_update(sphb); /* Refresh @has_vfio status */
-    object_child_foreach(OBJECT(sphb), spapr_phb_disable_dma_windows, sphb);
-    spapr_phb_dma_init_window(sphb, liobn, SPAPR_TCE_PAGE_SHIFT,
-                              sphb->dma32_window_size);
+    spapr_phb_dma_capabilities_update(sphb);
+
+    for (i = 0; i < SPAPR_PCI_DMA_MAX_WINDOWS; ++i) {
+        tcet = spapr_tce_find_by_liobn(SPAPR_PCI_LIOBN(sphb->index, i));
+        if (tcet) {
+            spapr_phb_dma_remove_window(sphb, tcet);
+        }
+    }
+
+    spapr_phb_dma_init_window(sphb, SPAPR_PCI_LIOBN(sphb->index, 0),
+                              SPAPR_TCE_PAGE_SHIFT, sphb->dma32_window_size);
 
     return 0;
 }
@@ -1509,7 +1514,9 @@ static int spapr_phb_children_reset(Object *child, void *opaque)
 
 static void spapr_phb_reset(DeviceState *qdev)
 {
-    spapr_phb_dma_reset(SPAPR_PCI_HOST_BRIDGE(qdev));
+    sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(qdev);
+
+    spapr_phb_dma_reset(sphb);
 
     /* Reset the IOMMU state */
     object_child_foreach(OBJECT(qdev), spapr_phb_children_reset, NULL);
@@ -1525,6 +1532,8 @@ static Property spapr_phb_properties[] = {
     DEFINE_PROP_UINT64("io_win_addr", sPAPRPHBState, io_win_addr, -1),
     DEFINE_PROP_UINT64("io_win_size", sPAPRPHBState, io_win_size,
                        SPAPR_PCI_IO_WIN_SIZE),
+    DEFINE_PROP_UINT64("dma64_win_addr", sPAPRPHBState, dma64_window_start,
+                       SPAPR_PCI_DMA64_START),
     DEFINE_PROP_BOOL("dynamic-reconfiguration", sPAPRPHBState, dr_enabled,
                      true),
     DEFINE_PROP_BOOL("ddw", sPAPRPHBState, ddw_enabled, true),
