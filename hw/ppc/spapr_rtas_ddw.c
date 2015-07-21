@@ -172,6 +172,10 @@ static void rtas_ibm_create_pe_dma_window(PowerPCCPU *cpu,
         goto hw_error_exit;
     }
 
+    if (window_shift < page_shift) {
+        goto param_error_exit;
+    }
+
     ret = spapr_phb_dma_init_window(sphb, liobn, page_shift,
                                     1ULL << window_shift);
     tcet = spapr_tce_find_by_liobn(liobn);
