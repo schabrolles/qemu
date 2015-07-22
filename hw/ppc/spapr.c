@@ -869,6 +869,36 @@ static void spapr_populate_cpus_dt_node(void *fdt, sPAPRMachineState *spapr)
 
 }
 
+static void spapr_drc_reset(void *opaque)
+{
+    sPAPRDRConnector *drc = opaque;
+    DeviceState *d = DEVICE(drc);
+
+    if (d) {
+        device_reset(d);
+    }
+}
+
+static void spapr_destroy_rma_lmb_dr_connectors(sPAPRMachineState *spapr)
+{
+    uint64_t lmb_size = SPAPR_MEMORY_BLOCK_SIZE;
+    uint32_t nr_rma_lmbs = spapr->rma_size/lmb_size;
+    sPAPRDRConnector *drc;
+    uint64_t addr;
+    int i;
+
+    for (i = 0; i < nr_rma_lmbs; i++) {
+        addr = i * lmb_size;
+
+        drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_LMB,
+                                       addr/lmb_size);
+        if (drc) {
+            qemu_unregister_reset(spapr_drc_reset, drc);
+            object_unparent(OBJECT(drc));
+        }
+    }
+}
+
 static void spapr_finalize_fdt(sPAPRMachineState *spapr,
                                hwaddr fdt_addr,
                                hwaddr rtas_addr,
@@ -1047,7 +1077,13 @@ static void spapr_reset_htab(sPAPRMachineState *spapr)
     if (spapr->vrma_adjust) {
         spapr->rma_size = kvmppc_rma_size(spapr_node0_size(),
                                           spapr->htab_shift);
+
+        /* Remove any DRC objects allocated for RMA LMBs */
+        if (spapr->dr_lmb_enabled) {
+            spapr_destroy_rma_lmb_dr_connectors(spapr);
+        }
     }
+
 }
 
 static int find_unknown_sysbus_device(SysBusDevice *sbdev, void *opaque)
@@ -1565,16 +1601,6 @@ static void spapr_boot_set(void *opaque, const char *boot_device,
 {
     MachineState *machine = MACHINE(qdev_get_machine());
     machine->boot_order = g_strdup(boot_device);
-}
-
-static void spapr_drc_reset(void *opaque)
-{
-    sPAPRDRConnector *drc = opaque;
-    DeviceState *d = DEVICE(drc);
-
-    if (d) {
-        device_reset(d);
-    }
 }
 
 static void spapr_cpu_init(PowerPCCPU *cpu)
