@@ -644,8 +644,12 @@ int spapr_tce_replay(sPAPRTCETable *tcet);
 int spapr_tce_realloc(sPAPRTCETable *tcet, bool vfio_accel,
                       bool force_userspace);
 void spapr_pci_switch_vga(bool big_endian);
-void spapr_hotplug_req_add_event(sPAPRDRConnector *drc);
-void spapr_hotplug_req_remove_event(sPAPRDRConnector *drc);
+void spapr_hotplug_req_add_by_index(sPAPRDRConnector *drc);
+void spapr_hotplug_req_remove_by_index(sPAPRDRConnector *drc);
+void spapr_hotplug_req_add_by_count(sPAPRDRConnectorType drc_type,
+                                       uint32_t count);
+void spapr_hotplug_req_remove_by_count(sPAPRDRConnectorType drc_type,
+                                          uint32_t count);
 
 /* rtas-configure-connector state */
 struct sPAPRConfigureConnectorState {

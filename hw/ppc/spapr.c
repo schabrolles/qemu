@@ -2229,7 +2229,7 @@ static void spapr_add_lmbs(DeviceState *dev, uint64_t addr, uint64_t size,
             return;
         }
 
-        spapr_hotplug_req_add_event(drc);
+        spapr_hotplug_req_add_by_index(drc);
         addr += SPAPR_MEMORY_BLOCK_SIZE;
     }
 }
@@ -2483,7 +2483,7 @@ static void spapr_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
      * of hotplugged CPUs.
      */
     if (dev->hotplugged) {
-        spapr_hotplug_req_add_event(drc);
+        spapr_hotplug_req_add_by_index(drc);
     } else {
         /*
          * HACK to support removal of hotplugged CPU after VM migration:
@@ -2542,7 +2542,7 @@ static int spapr_cpu_unplug(Object *obj, void *opaque)
      * interrupt to the guest for coldplugged CPUs started via -device
      * option too.
      */
-    spapr_hotplug_req_remove_event(drc);
+    spapr_hotplug_req_remove_by_index(drc);
 
     return 0;
 }
