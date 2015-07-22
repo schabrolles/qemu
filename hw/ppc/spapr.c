@@ -647,6 +647,8 @@ static int spapr_populate_drconf_memory(sPAPRMachineState *spapr, void *fdt)
         if (addr < spapr->ram_limit ||
                     memory_region_present(get_system_memory(), addr)) {
             dynamic_memory[5] = cpu_to_be32(SPAPR_LMB_FLAGS_ASSIGNED);
+            drck->set_allocation_state(drc, SPAPR_DR_ALLOCATION_STATE_USABLE);
+            drck->set_isolation_state(drc, SPAPR_DR_ISOLATION_STATE_UNISOLATED);
         } else {
             dynamic_memory[5] = cpu_to_be32(0);
         }
