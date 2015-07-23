@@ -666,4 +666,9 @@ void spapr_ccs_reset_hook(void *opaque);
 void spapr_rtc_read(DeviceState *dev, struct tm *tm, uint32_t *ns);
 int spapr_rtc_import_offset(DeviceState *dev, int64_t legacy_offset);
 
+/* RTAS in-memory Blob layout */
+#define RTAS_ENTRY_OFFSET        0
+#define RTAS_TRAMPOLINE_OFFSET   0x200
+#define RTAS_ERRLOG_OFFSET       0x800
+
 #endif /* !defined (__HW_SPAPR_H__) */
