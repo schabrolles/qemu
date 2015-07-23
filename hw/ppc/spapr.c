@@ -1873,6 +1873,13 @@ static void ppc_spapr_init(MachineState *machine)
         exit(1);
     }
     spapr->rtas_size = get_image_size(filename);
+
+    /*
+     * Resize blob to accommodate error log. The layout of the rtas
+     * blob is defined in include/hw/ppc/spapr.h
+     */
+    spapr->rtas_size = TARGET_PAGE_ALIGN(spapr->rtas_size);
+
     spapr->rtas_blob = g_malloc(spapr->rtas_size);
     if (load_image_size(filename, spapr->rtas_blob, spapr->rtas_size) < 0) {
         error_report("Could not load LPAR rtas '%s'", filename);

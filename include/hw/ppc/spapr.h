@@ -644,4 +644,9 @@ int spapr_rng_populate_dt(void *fdt);
  */
 #define SPAPR_LMB_FLAGS_ASSIGNED 0x00000008
 
+/* RTAS in-memory Blob layout */
+#define RTAS_ENTRY_OFFSET        0
+#define RTAS_TRAMPOLINE_OFFSET   0x200
+#define RTAS_ERRLOG_OFFSET       0x800
+
 #endif /* !defined (__HW_SPAPR_H__) */
