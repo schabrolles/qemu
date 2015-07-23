@@ -98,6 +98,9 @@ struct rtas_mc_log {
     struct rtas_error_log err_log;
 };
 
+/* Whether machine check handling is in progress by any CPU */
+bool mc_in_progress;
+
 static void do_spr_sync(void *arg)
 {
     struct SPRSyncState *s = arg;
@@ -747,6 +750,19 @@ static target_ulong h_report_mc_err(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     CPUPPCState *env = &cpu->env;
 
     cpu_synchronize_state(CPU(ppc_env_get_cpu(env)));
+
+    /*
+     * Only one VCPU can process machine check NMI at a time. Hence
+     * set the lock mc_in_progress. Once the VCPU finishes processing
+     * NMI, it executes ibm,nmi-interlock and mc_in_progress is unset
+     * in ibm,nmi-interlock handler. Meanwhile if other VCPUs encounter
+     * NMI we return 0 asking the VCPU to retry h_report_mc_err
+     */
+    if (mc_in_progress == 1) {
+        return 0;
+    }
+
+    mc_in_progress = 1;
 
     /*
      * We save the original r3 register in SPRG2 in 0x200 vector,

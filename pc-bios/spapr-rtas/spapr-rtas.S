@@ -35,3 +35,41 @@ _start:
 	ori	3,3,KVMPPC_H_RTAS@l
 	sc	1
 	blr
+   . = 0x200
+   /*
+    * Trampoline saves r3 in sprg2 and issues private hcall
+    * to request qemu to build error log. QEMU builds the
+    * error log, copies to rtas-blob and returns the address.
+    * The initial 16 bytes in return adress consist of saved
+    * srr0 and srr1 which we restore and pass on the actual error
+    * log address to OS handled mcachine check notification
+    * routine
+    *
+    * All the below instructions are copied to interrupt vector
+    * 0x200 at the time of handling ibm,nmi-register rtas call.
+    */
+   mtsprg  2,3
+   li      3,0
+   /*
+    * ori r3,r3,KVMPPC_H_REPORT_MC_ERR. The KVMPPC_H_REPORT_MC_ERR
+    * value is patched below
+    */
+1:  ori     3,3,0
+   sc      1               /* Issue H_CALL */
+   cmpdi   cr0,3,0
+   beq     cr0,1b          /* retry KVMPPC_H_REPORT_MC_ERR */
+   mtsprg  2,4
+   ld      4,0(3)
+   mtsrr0  4               /* Restore srr0 */
+   ld      4,8(3)
+   mtsrr1  4               /* Restore srr1 */
+   ld      4,16(3)
+   mtcrf   0,4             /* Restore cr */
+   addi    3,3,24
+   mfsprg  4,2
+   /*
+    * Branch to address registered by OS. The branch address is
+    * patched in the ibm,nmi-register rtas call.
+    */
+   ba      0x0
+   b       .

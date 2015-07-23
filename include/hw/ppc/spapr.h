@@ -475,8 +475,10 @@ int spapr_allocate_irq_block(int num, bool lsi, bool msi);
 #define RTAS_IBM_CREATE_PE_DMA_WINDOW           (RTAS_TOKEN_BASE + 0x27)
 #define RTAS_IBM_REMOVE_PE_DMA_WINDOW           (RTAS_TOKEN_BASE + 0x28)
 #define RTAS_IBM_RESET_PE_DMA_WINDOW            (RTAS_TOKEN_BASE + 0x29)
+#define RTAS_IBM_NMI_REGISTER                   (RTAS_TOKEN_BASE + 0x2A)
+#define RTAS_IBM_NMI_INTERLOCK                  (RTAS_TOKEN_BASE + 0x2B)
 
-#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2A)
+#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2C)
 
 /* RTAS ibm,get-system-parameter token values */
 #define RTAS_SYSPARM_SPLPAR_CHARACTERISTICS      20
@@ -651,5 +653,18 @@ int spapr_rng_populate_dt(void *fdt);
 #define RTAS_ENTRY_OFFSET        0
 #define RTAS_TRAMPOLINE_OFFSET   0x200
 #define RTAS_ERRLOG_OFFSET       0x800
+
+/* Machine Check Trampoline related macros
+ *
+ * These macros should co-relate to the code we
+ * have in pc-bios/spapr-rtas/spapr-rtas.S
+ */
+#define TRAMPOLINE_INSTS           17
+#define TRAMPOLINE_ORI_INST_INDEX  2
+#define TRAMPOLINE_BR_INST_INDEX   15
+
+/* Machine Check Interrupt related macros */
+#define MC_INTERRUPT_VECTOR           0x200
+#define MC_INTERRUPT_VECTOR_SIZE      0x100
 
 #endif /* !defined (__HW_SPAPR_H__) */
