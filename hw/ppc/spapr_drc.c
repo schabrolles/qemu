@@ -312,7 +312,7 @@ static void attach(sPAPRDRConnector *drc, DeviceState *d, void *fdt,
     drc->dev = d;
     drc->fdt = fdt;
     drc->fdt_start_offset = fdt_start_offset;
-    drc->configured = false;
+    drc->configured = coldplug;
     if (drc->type != SPAPR_DR_CONNECTOR_TYPE_PCI) {
         drc->awaiting_allocation = true;
     }
