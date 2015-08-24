@@ -71,7 +71,7 @@ struct rtas_error_log {
      *     XXXX 4: Target of failed operation
      */
     uint8_t     byte3;          /* General event or error*/
-    __be32      extended_log_length;    /* length in bytes */
+    uint32_t    extended_log_length;    /* length in bytes */
     unsigned char   buffer[1];      /* Start of extended log */
                                 /* Variable length.      */
 };
