@@ -596,5 +596,6 @@ BusState *spapr_tce_bus_init(void);
 #define MC_INTERRUPT_VECTOR           0x200
 #define MC_INTERRUPT_VECTOR_SIZE      0x100
 void spapr_rtc_init(void);
+void spapr_rtc_read(sPAPREnvironment *spapr, struct tm *tm, uint32_t *ns);
 
 #endif /* !defined (__HW_SPAPR_H__) */
