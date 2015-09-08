@@ -67,6 +67,7 @@ struct sPAPRMachineState {
     bool has_graphics;
     bool dr_lmb_enabled; /* hotplug / dynamic-reconfiguration of LMBs */
     bool dr_cpu_enabled; /* hotplug / dynamic-reconfiguration of CPUs */
+    bool cpu_unplug_active;
 
     uint32_t check_exception_irq;
     Notifier epow_notifier;
@@ -665,6 +666,12 @@ struct sPAPRConfigureConnectorState {
 };
 
 void spapr_ccs_reset_hook(void *opaque);
+
+/* List to store unplugged CPU objects for lazy cleanup */
+typedef struct CPUUnplug {
+    Object *cpu;
+    QLIST_ENTRY(CPUUnplug) node;
+} CPUUnplug;
 
 #define TYPE_SPAPR_RTC "spapr-rtc"
 
