@@ -929,6 +929,16 @@ typedef struct LoadStateEntry {
     int version_id;
 } LoadStateEntry;
 
+static inline bool section_from_powerkvm211(const SaveStateEntry *se,
+                                            int version_id)
+{
+    if (version_id == 6 && !strcmp(se->idstr, "cpu")) {
+        error_report("warning: PowerKVM-2.1.1 compat mode for section 'cpu'");
+        return true;
+    }
+    return false;
+}
+
 int qemu_loadvm_state(QEMUFile *f)
 {
     QLIST_HEAD(, LoadStateEntry) loadvm_handlers =
@@ -991,7 +1001,8 @@ int qemu_loadvm_state(QEMUFile *f)
             }
 
             /* Validate version */
-            if (version_id > se->version_id) {
+            if (version_id > se->version_id &&
+                !section_from_powerkvm211(se, version_id)) {
                 error_report("savevm: unsupported version %d for '%s' v%d",
                              version_id, idstr, se->version_id);
                 ret = -EINVAL;
