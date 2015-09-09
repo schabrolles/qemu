@@ -929,11 +929,14 @@ typedef struct LoadStateEntry {
     int version_id;
 } LoadStateEntry;
 
+bool source_is_powerkvm_211 = false;
+
 static inline bool section_from_powerkvm211(const SaveStateEntry *se,
                                             int version_id)
 {
     if (version_id == 6 && !strcmp(se->idstr, "cpu")) {
         error_report("warning: PowerKVM-2.1.1 compat mode for section 'cpu'");
+        source_is_powerkvm_211 = true;
         return true;
     }
     if (version_id == 3 && !strcmp(se->idstr, "spapr_pci")) {
@@ -1091,6 +1094,7 @@ out:
         ret = file_error_after_eof;
     }
 
+    source_is_powerkvm_211 = false;
     return ret;
 }
 
