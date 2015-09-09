@@ -903,7 +903,7 @@ static const TypeInfo virtio_9p_pci_info = {
  */
 
 /* This is called by virtio-bus just after the device is plugged. */
-static void virtio_pci_device_plugged(DeviceState *d)
+static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
 {
     VirtIOPCIProxy *proxy = VIRTIO_PCI(d);
     VirtioBusState *bus = &proxy->bus;
