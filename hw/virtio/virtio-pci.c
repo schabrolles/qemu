@@ -1274,6 +1274,13 @@ static void virtio_pci_modern_region_map(VirtIOPCIProxy *proxy,
                                 &region->mr);
 }
 
+static void virtio_pci_modern_region_unmap(VirtIOPCIProxy *proxy,
+                                           VirtIOPCIRegion *region)
+{
+    memory_region_del_subregion(&proxy->modern_bar,
+                                &region->mr);
+}
+
 /* This is called by virtio-bus just after the device is plugged. */
 static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
 {
@@ -1411,8 +1418,16 @@ static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
 static void virtio_pci_device_unplugged(DeviceState *d)
 {
     VirtIOPCIProxy *proxy = VIRTIO_PCI(d);
+    bool modern = !(proxy->flags & VIRTIO_PCI_FLAG_DISABLE_MODERN);
 
     virtio_pci_stop_ioeventfd(proxy);
+
+    if (modern) {
+        virtio_pci_modern_region_unmap(proxy, &proxy->common);
+        virtio_pci_modern_region_unmap(proxy, &proxy->isr);
+        virtio_pci_modern_region_unmap(proxy, &proxy->device);
+        virtio_pci_modern_region_unmap(proxy, &proxy->notify);
+    }
 }
 
 static void virtio_pci_realize(PCIDevice *pci_dev, Error **errp)
