@@ -1142,6 +1142,9 @@ static void ppc_spapr_reset(void)
 
     qemu_devices_reset();
 
+    /* Reset error injection token */
+    spapr->errinjct_token = 0;
+
     /*
      * We place the device tree and RTAS just below either the top of the RMA,
      * or just below 2GB, whichever is lowere, so that it can be
@@ -1269,7 +1272,7 @@ static bool version_before_3(void *opaque, int version_id)
 
 static const VMStateDescription vmstate_spapr = {
     .name = "spapr",
-    .version_id = 3,
+    .version_id = 4,
     .minimum_version_id = 1,
     .post_load = spapr_post_load,
     .fields = (VMStateField[]) {
@@ -1280,6 +1283,10 @@ static const VMStateDescription vmstate_spapr = {
         VMSTATE_UINT64_TEST(rtc_offset, sPAPRMachineState, version_before_3),
 
         VMSTATE_PPC_TIMEBASE_V(tb, sPAPRMachineState, 2),
+
+        /* Error injection token */
+        VMSTATE_UINT32_V(errinjct_token, sPAPRMachineState, 4),
+
         VMSTATE_END_OF_LIST()
     },
 };

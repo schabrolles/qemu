@@ -79,6 +79,9 @@ struct sPAPRMachineState {
     int htab_fd;
     bool htab_fd_stale;
 
+    /* Error injection token */
+    uint32_t errinjct_token;
+
     /* RTAS state */
     QTAILQ_HEAD(, sPAPRConfigureConnectorState) ccs_list;
 
@@ -429,6 +432,8 @@ int spapr_allocate_irq_block(int num, bool lsi, bool msi);
 #define RTAS_OUT_PARAM_ERROR        -3
 #define RTAS_OUT_NOT_SUPPORTED      -3
 #define RTAS_OUT_NO_SUCH_INDICATOR  -3
+#define RTAS_OUT_TOKEN_OPENED       -4
+#define RTAS_OUT_CLOSE_ERROR        -4
 #define RTAS_OUT_NOT_AUTHORIZED     -9002
 
 /* DDW pagesize mask values from ibm,query-pe-dma-window */
@@ -488,8 +493,10 @@ int spapr_allocate_irq_block(int num, bool lsi, bool msi);
 #define RTAS_IBM_RESET_PE_DMA_WINDOW            (RTAS_TOKEN_BASE + 0x29)
 #define RTAS_IBM_NMI_REGISTER                   (RTAS_TOKEN_BASE + 0x2A)
 #define RTAS_IBM_NMI_INTERLOCK                  (RTAS_TOKEN_BASE + 0x2B)
+#define RTAS_IBM_OPEN_ERRINJCT                  (RTAS_TOKEN_BASE + 0x2C)
+#define RTAS_IBM_CLOSE_ERRINJCT                 (RTAS_TOKEN_BASE + 0x2D)
 
-#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2C)
+#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2E)
 
 /* RTAS ibm,get-system-parameter token values */
 #define RTAS_SYSPARM_SPLPAR_CHARACTERISTICS      20
