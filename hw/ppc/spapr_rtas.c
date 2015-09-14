@@ -719,6 +719,62 @@ static void rtas_ibm_nmi_interlock(PowerPCCPU *cpu,
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
 }
 
+static void rtas_ibm_open_errinjct(PowerPCCPU *cpu,
+                                   sPAPRMachineState *spapr,
+                                   uint32_t token, uint32_t nargs,
+                                   target_ulong args, uint32_t nret,
+                                   target_ulong rets)
+{
+    int32_t ret;
+
+    /* Sanity check on number of arguments */
+    if (nargs != 0 || nret != 2) {
+        ret = RTAS_OUT_PARAM_ERROR;
+        goto out;
+    }
+
+    /* Check if we already had token */
+    if (spapr->errinjct_token & 1) {
+        ret = RTAS_OUT_TOKEN_OPENED;
+        goto out;
+    }
+
+    /* Grab the token */
+    rtas_st(rets, 0, ++spapr->errinjct_token);
+    ret = RTAS_OUT_SUCCESS;
+out:
+    rtas_st(rets, 1, ret);
+}
+
+static void rtas_ibm_close_errinjct(PowerPCCPU *cpu,
+                                    sPAPRMachineState *spapr,
+                                    uint32_t token, uint32_t nargs,
+                                    target_ulong args, uint32_t nret,
+                                    target_ulong rets)
+{
+    uint32_t open_token;
+    int32_t ret;
+
+    /* Sanity check on number of arguments */
+    if (nargs != 1 || nret != 1) {
+        ret = RTAS_OUT_PARAM_ERROR;
+        goto out;
+    }
+
+    /* Match with the passed token */
+    open_token = rtas_ld(args, 0);
+    if (!(spapr->errinjct_token & 1) ||
+        spapr->errinjct_token != open_token) {
+        ret = RTAS_OUT_CLOSE_ERROR;
+        goto out;
+    }
+
+    spapr->errinjct_token++;
+    ret = RTAS_OUT_SUCCESS;
+out:
+    rtas_st(rets, 0, ret);
+}
+
 static struct rtas_call {
     const char *name;
     spapr_rtas_fn fn;
@@ -867,6 +923,10 @@ static void core_rtas_register_types(void)
                         rtas_ibm_nmi_register);
     spapr_rtas_register(RTAS_IBM_NMI_INTERLOCK, "ibm,nmi-interlock",
                         rtas_ibm_nmi_interlock);
+    spapr_rtas_register(RTAS_IBM_OPEN_ERRINJCT, "ibm,open-errinjct",
+                        rtas_ibm_open_errinjct);
+    spapr_rtas_register(RTAS_IBM_CLOSE_ERRINJCT, "ibm,close-errinjct",
+                        rtas_ibm_close_errinjct);
 }
 
 type_init(core_rtas_register_types)
