@@ -646,6 +646,36 @@ param_error_exit:
     rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
 }
 
+int spapr_rtas_errinjct_ioa(sPAPRMachineState *spapr,
+                            target_ulong param_buf,
+                            bool is_64bits)
+{
+    sPAPRPHBState *sphb;
+    uint64_t buid, addr, mask;
+    uint32_t func;
+
+    if (is_64bits) {
+        addr = rtas_ldq(param_buf, 0);
+        mask = rtas_ldq(param_buf, 2);
+        buid = rtas_ldq(param_buf, 5);
+        func = rtas_ld(param_buf, 7);
+    } else {
+        addr = rtas_ld(param_buf, 0);
+        mask = rtas_ld(param_buf, 1);
+        buid = rtas_ldq(param_buf, 3);
+        func = rtas_ld(param_buf, 5);
+    }
+
+    /* Find PHB */
+    sphb = spapr_pci_find_phb(spapr, buid);
+    if (!sphb || sphb->vfio_num == 0) {
+        return RTAS_OUT_PARAM_ERROR;
+    }
+
+    /* Handle the request */
+    return spapr_phb_vfio_eeh_inject_error(sphb, func, addr, mask, is_64bits);
+}
+
 static int pci_spapr_swizzle(int slot, int pin)
 {
     return (slot + pin) % PCI_NUM_PINS;

@@ -17,6 +17,8 @@
  *  along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "asm-powerpc/eeh.h"
+
 #include "hw/ppc/spapr.h"
 #include "hw/pci-host/spapr.h"
 #include "hw/pci/msix.h"
@@ -286,6 +288,36 @@ int spapr_phb_vfio_eeh_configure(sPAPRPHBState *sphb)
     }
 
     return RTAS_OUT_SUCCESS;
+}
+
+int spapr_phb_vfio_eeh_inject_error(sPAPRPHBState *sphb,
+                                    uint32_t func, uint64_t addr,
+                                    uint64_t mask, bool is_64bits)
+{
+    struct vfio_eeh_pe_op op = {
+        .op = VFIO_EEH_PE_INJECT_ERR,
+        .argsz = sizeof(op)
+    };
+    int ret = RTAS_OUT_SUCCESS;
+
+    op.err.type = is_64bits ? EEH_ERR_TYPE_64 : EEH_ERR_TYPE_32;
+    op.err.addr = addr;
+    op.err.mask = mask;
+    if (func <= EEH_ERR_FUNC_MAX) {
+        op.err.func = func;
+    } else {
+        ret = RTAS_OUT_PARAM_ERROR;
+        goto out;
+    }
+
+    if (vfio_container_ioctl(&sphb->iommu_as, VFIO_EEH_PE_OP, &op) < 0) {
+        ret = RTAS_OUT_HW_ERROR;
+        goto out;
+    }
+
+    ret = RTAS_OUT_SUCCESS;
+out:
+    return ret;
 }
 
 static void spapr_phb_vfio_class_init(ObjectClass *klass, void *data)

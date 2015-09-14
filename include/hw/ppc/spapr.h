@@ -424,6 +424,10 @@ int spapr_allocate_irq_block(int num, bool lsi, bool msi);
 #define RTAS_SLOT_TEMP_ERR_LOG           1
 #define RTAS_SLOT_PERM_ERR_LOG           2
 
+/* ibm,errinjct */
+#define RTAS_ERRINJCT_TYPE_IOA_BUS_ERROR        7
+#define RTAS_ERRINJCT_TYPE_IOA_BUS_ERROR64      8
+
 /* RTAS return codes */
 #define RTAS_OUT_SUCCESS            0
 #define RTAS_OUT_NO_ERRORS_FOUND    1
@@ -495,8 +499,9 @@ int spapr_allocate_irq_block(int num, bool lsi, bool msi);
 #define RTAS_IBM_NMI_INTERLOCK                  (RTAS_TOKEN_BASE + 0x2B)
 #define RTAS_IBM_OPEN_ERRINJCT                  (RTAS_TOKEN_BASE + 0x2C)
 #define RTAS_IBM_CLOSE_ERRINJCT                 (RTAS_TOKEN_BASE + 0x2D)
+#define RTAS_IBM_ERRINJCT                       (RTAS_TOKEN_BASE + 0x2E)
 
-#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2E)
+#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2F)
 
 /* RTAS ibm,get-system-parameter token values */
 #define RTAS_SYSPARM_SPLPAR_CHARACTERISTICS      20
@@ -663,6 +668,8 @@ int spapr_tce_replay(sPAPRTCETable *tcet);
 int spapr_tce_realloc(sPAPRTCETable *tcet, bool vfio_accel,
                       bool force_userspace);
 void spapr_pci_switch_vga(bool big_endian);
+int spapr_rtas_errinjct_ioa(sPAPRMachineState *spapr,
+                            target_ulong param_buf, bool is_64bits);
 void spapr_hotplug_req_add_by_index(sPAPRDRConnector *drc);
 void spapr_hotplug_req_remove_by_index(sPAPRDRConnector *drc);
 void spapr_hotplug_req_add_by_count(sPAPRDRConnectorType drc_type,

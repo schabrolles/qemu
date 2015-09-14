@@ -738,6 +738,54 @@ out:
     rtas_st(rets, 1, ret);
 }
 
+static void rtas_ibm_errinjct(PowerPCCPU *cpu,
+                              sPAPRMachineState *spapr,
+                              uint32_t token, uint32_t nargs,
+                              target_ulong args, uint32_t nret,
+                              target_ulong rets)
+{
+    target_ulong param_buf;
+    uint32_t type, open_token;
+    int32_t ret;
+
+    /* Sanity check on number of arguments */
+    if (nargs != 3 || nret != 1) {
+        ret = RTAS_OUT_PARAM_ERROR;
+        goto out;
+    }
+
+    /* Check if we have opened token */
+    open_token = rtas_ld(args, 1);
+    if (!(spapr->errinjct_token & 1) ||
+        spapr->errinjct_token != open_token) {
+        ret = RTAS_OUT_CLOSE_ERROR;
+        goto out;
+    }
+
+    /* The parameter buffer should be 1KB aligned */
+    param_buf = rtas_ld(args, 2);
+    if (param_buf & 0x3ff) {
+        ret = RTAS_OUT_PARAM_ERROR;
+        goto out;
+    }
+
+    /* Check the error type */
+    type = rtas_ld(args, 0);
+    switch (type) {
+    case RTAS_ERRINJCT_TYPE_IOA_BUS_ERROR:
+        ret = spapr_rtas_errinjct_ioa(spapr, param_buf, false);
+        break;
+    case RTAS_ERRINJCT_TYPE_IOA_BUS_ERROR64:
+        ret = spapr_rtas_errinjct_ioa(spapr, param_buf, true);
+        break;
+    default:
+        ret = RTAS_OUT_PARAM_ERROR;
+    }
+
+out:
+    rtas_st(rets, 0, ret);
+}
+
 static void rtas_ibm_close_errinjct(PowerPCCPU *cpu,
                                     sPAPRMachineState *spapr,
                                     uint32_t token, uint32_t nargs,
@@ -852,6 +900,33 @@ int spapr_rtas_device_tree_setup(sPAPRMachineState *spapr, void *fdt,
     int ret;
     int i;
     uint32_t lrdr_capacity[5];
+    char errinjct_tokens[1024];
+    int fdt_offset, offset;
+    const int tokens[] = {
+        RTAS_ERRINJCT_TYPE_IOA_BUS_ERROR,
+        RTAS_ERRINJCT_TYPE_IOA_BUS_ERROR64
+    };
+    const char *token_strings[] = {
+        "ioa-bus-error",
+        "ioa-bus-error-64"
+    };
+
+    /* ibm,errinjct-tokens */
+    offset = 0;
+    for (i = 0; i < ARRAY_SIZE(tokens); i++) {
+        offset += sprintf(errinjct_tokens + offset, "%s", token_strings[i]);
+        errinjct_tokens[offset++] = '\0';
+        stl_be_p(&errinjct_tokens[offset], tokens[i]);
+        offset += sizeof(int);
+    }
+
+    fdt_offset = fdt_path_offset(fdt, "/rtas");
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,errinjct-tokens",
+                      errinjct_tokens, offset);
+    if (ret < 0) {
+        fprintf(stderr, "Couldn't add ibm,errinjct-tokens\n");
+        return ret;
+    }
 
     ret = fdt_add_mem_rsv(fdt, rtas_addr, rtas_size);
     if (ret < 0) {
@@ -950,6 +1025,8 @@ static void core_rtas_register_types(void)
                         rtas_ibm_nmi_interlock);
     spapr_rtas_register(RTAS_IBM_OPEN_ERRINJCT, "ibm,open-errinjct",
                         rtas_ibm_open_errinjct);
+    spapr_rtas_register(RTAS_IBM_ERRINJCT, "ibm,errinjct",
+                        rtas_ibm_errinjct);
     spapr_rtas_register(RTAS_IBM_CLOSE_ERRINJCT, "ibm,close-errinjct",
                         rtas_ibm_close_errinjct);
 }
