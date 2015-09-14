@@ -107,7 +107,7 @@ static void rtas_ibm_query_pe_dma_window(PowerPCCPU *cpu,
         goto param_error_exit;
     }
 
-    buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
+    buid = rtas_ldq(args, 1);
     addr = rtas_ld(args, 0);
     sphb = spapr_pci_find_phb(spapr, buid);
     if (!sphb || !sphb->ddw_enabled) {
@@ -157,7 +157,7 @@ static void rtas_ibm_create_pe_dma_window(PowerPCCPU *cpu,
         goto param_error_exit;
     }
 
-    buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
+    buid = rtas_ldq(args, 1);
     addr = rtas_ld(args, 0);
     sphb = spapr_pci_find_phb(spapr, buid);
     if (!sphb || !sphb->ddw_enabled) {
@@ -260,7 +260,7 @@ static void rtas_ibm_reset_pe_dma_window(PowerPCCPU *cpu,
         goto param_error_exit;
     }
 
-    buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
+    buid = rtas_ldq(args, 1);
     addr = rtas_ld(args, 0);
     sphb = spapr_pci_find_phb(spapr, buid);
     if (!sphb || !sphb->ddw_enabled) {
