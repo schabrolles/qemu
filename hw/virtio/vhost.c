@@ -17,9 +17,11 @@
 #include "hw/hw.h"
 #include "qemu/atomic.h"
 #include "qemu/range.h"
+#include "qemu/error-report.h"
 #include <linux/vhost.h>
 #include "exec/address-spaces.h"
 #include "hw/virtio/virtio-bus.h"
+#include "hw/virtio/virtio-access.h"
 #include "migration/migration.h"
 
 static void vhost_dev_sync_region(struct vhost_dev *dev,
@@ -539,13 +541,7 @@ static int vhost_virtqueue_set_addr(struct vhost_dev *dev,
         .log_guest_addr = vq->used_phys,
         .flags = enable_log ? (1 << VHOST_VRING_F_LOG) : 0,
     };
-    int r;
-
-    if (vq->byteswap) {
-	addr.flags |= (1 << VHOST_VRING_F_BYTESWAP);
-    }
-
-    r = dev->vhost_ops->vhost_call(dev, VHOST_SET_VRING_ADDR, &addr);
+    int r = dev->vhost_ops->vhost_call(dev, VHOST_SET_VRING_ADDR, &addr);
     if (r < 0) {
         return -errno;
     }
@@ -557,7 +553,7 @@ static int vhost_dev_set_features(struct vhost_dev *dev, bool enable_log)
     uint64_t features = dev->acked_features;
     int r;
     if (enable_log) {
-        features |= 0x1 << VHOST_F_LOG_ALL;
+        features |= 0x1ULL << VHOST_F_LOG_ALL;
     }
     r = dev->vhost_ops->vhost_call(dev, VHOST_SET_FEATURES, &features);
     return r < 0 ? -errno : 0;
@@ -653,13 +649,25 @@ static void vhost_log_stop(MemoryListener *listener,
     /* FIXME: implement */
 }
 
-static bool vhost_virtqueue_needs_byteswap(VirtIODevice *vdev)
+static int vhost_virtqueue_set_vring_endian_legacy(struct vhost_dev *dev,
+                                                   bool is_big_endian,
+                                                   int vhost_vq_index)
 {
-#ifdef HOST_WORDS_BIGENDIAN
-    return !virtio_is_big_endian(vdev);
-#else
-    return virtio_is_big_endian(vdev);
-#endif
+    struct vhost_vring_state s = {
+        .index = vhost_vq_index,
+        .num = is_big_endian
+    };
+
+    if (!dev->vhost_ops->vhost_call(dev, VHOST_SET_VRING_ENDIAN, &s)) {
+        return 0;
+    }
+
+    if (errno == ENOTTY) {
+        error_report("vhost does not support cross-endian");
+        return -ENOSYS;
+    }
+
+    return -errno;
 }
 
 static int vhost_virtqueue_start(struct vhost_dev *dev,
@@ -692,6 +700,16 @@ static int vhost_virtqueue_start(struct vhost_dev *dev,
         return -errno;
     }
 
+    if (!virtio_has_feature(vdev, VIRTIO_F_VERSION_1) &&
+        virtio_legacy_is_cross_endian(vdev)) {
+        r = vhost_virtqueue_set_vring_endian_legacy(dev,
+                                                    virtio_is_big_endian(vdev),
+                                                    vhost_vq_index);
+        if (r) {
+            return -errno;
+        }
+    }
+
     s = l = virtio_queue_get_desc_size(vdev, idx);
     a = virtio_queue_get_desc_addr(vdev, idx);
     vq->desc = cpu_physical_memory_map(a, &l, 0);
@@ -721,8 +739,6 @@ static int vhost_virtqueue_start(struct vhost_dev *dev,
         r = -ENOMEM;
         goto fail_alloc_ring;
     }
-
-    vq->byteswap = vhost_virtqueue_needs_byteswap(vdev);
 
     r = vhost_virtqueue_set_addr(dev, vq, vhost_vq_index, dev->log_enabled);
     if (r < 0) {
@@ -764,8 +780,9 @@ static void vhost_virtqueue_stop(struct vhost_dev *dev,
                                     struct vhost_virtqueue *vq,
                                     unsigned idx)
 {
+    int vhost_vq_index = idx - dev->vq_index;
     struct vhost_vring_state state = {
-        .index = idx - dev->vq_index
+        .index = vhost_vq_index,
     };
     int r;
     assert(idx >= dev->vq_index && idx < dev->vq_index + dev->nvqs);
@@ -776,6 +793,20 @@ static void vhost_virtqueue_stop(struct vhost_dev *dev,
     }
     virtio_queue_set_last_avail_idx(vdev, idx, state.num);
     virtio_queue_invalidate_signalled_used(vdev, idx);
+
+    /* In the cross-endian case, we need to reset the vring endianness to
+     * native as legacy devices expect so by default.
+     */
+    if (!virtio_has_feature(vdev, VIRTIO_F_VERSION_1) &&
+        virtio_legacy_is_cross_endian(vdev)) {
+        r = vhost_virtqueue_set_vring_endian_legacy(dev,
+                                                    !virtio_is_big_endian(vdev),
+                                                    vhost_vq_index);
+        if (r < 0) {
+            error_report("failed to reset vring endianness");
+        }
+    }
+
     assert (r >= 0);
     cpu_physical_memory_unmap(vq->ring, virtio_queue_get_ring_size(vdev, idx),
                               0, virtio_queue_get_ring_size(vdev, idx));
@@ -877,7 +908,7 @@ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
         .priority = 10
     };
     hdev->migration_blocker = NULL;
-    if (!(hdev->features & (0x1 << VHOST_F_LOG_ALL))) {
+    if (!(hdev->features & (0x1ULL << VHOST_F_LOG_ALL))) {
         error_setg(&hdev->migration_blocker,
                    "Migration disabled: vhost lacks VHOST_F_LOG_ALL feature.");
         migrate_add_blocker(hdev->migration_blocker);
@@ -1020,12 +1051,12 @@ void vhost_virtqueue_mask(struct vhost_dev *hdev, VirtIODevice *vdev, int n,
     assert(r >= 0);
 }
 
-unsigned vhost_get_features(struct vhost_dev *hdev, const int *feature_bits,
-        unsigned features)
+uint64_t vhost_get_features(struct vhost_dev *hdev, const int *feature_bits,
+                            uint64_t features)
 {
     const int *bit = feature_bits;
     while (*bit != VHOST_INVALID_FEATURE_BIT) {
-        unsigned bit_mask = (1 << *bit);
+        uint64_t bit_mask = (1ULL << *bit);
         if (!(hdev->features & bit_mask)) {
             features &= ~bit_mask;
         }
@@ -1035,11 +1066,11 @@ unsigned vhost_get_features(struct vhost_dev *hdev, const int *feature_bits,
 }
 
 void vhost_ack_features(struct vhost_dev *hdev, const int *feature_bits,
-        unsigned features)
+                        uint64_t features)
 {
     const int *bit = feature_bits;
     while (*bit != VHOST_INVALID_FEATURE_BIT) {
-        unsigned bit_mask = (1 << *bit);
+        uint64_t bit_mask = (1ULL << *bit);
         if (features & bit_mask) {
             hdev->acked_features |= bit_mask;
         }

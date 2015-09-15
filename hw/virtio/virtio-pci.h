@@ -63,6 +63,12 @@ typedef struct VirtioBusClass VirtioPCIBusClass;
 #define VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT 1
 #define VIRTIO_PCI_FLAG_USE_IOEVENTFD   (1 << VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT)
 
+/* virtio version flags */
+#define VIRTIO_PCI_FLAG_DISABLE_LEGACY_BIT 2
+#define VIRTIO_PCI_FLAG_DISABLE_MODERN_BIT 3
+#define VIRTIO_PCI_FLAG_DISABLE_LEGACY (1 << VIRTIO_PCI_FLAG_DISABLE_LEGACY_BIT)
+#define VIRTIO_PCI_FLAG_DISABLE_MODERN (1 << VIRTIO_PCI_FLAG_DISABLE_MODERN_BIT)
+
 typedef struct {
     MSIMessage msg;
     int virq;
@@ -85,13 +91,33 @@ typedef struct VirtioPCIClass {
     void (*realize)(VirtIOPCIProxy *vpci_dev, Error **errp);
 } VirtioPCIClass;
 
+typedef struct VirtIOPCIRegion {
+    MemoryRegion mr;
+    uint32_t offset;
+} VirtIOPCIRegion;
+
 struct VirtIOPCIProxy {
     PCIDevice pci_dev;
     MemoryRegion bar;
+    VirtIOPCIRegion common;
+    VirtIOPCIRegion isr;
+    VirtIOPCIRegion device;
+    VirtIOPCIRegion notify;
+    MemoryRegion modern_bar;
     uint32_t flags;
     uint32_t class_code;
     uint32_t nvectors;
-    uint32_t host_features;
+    uint32_t dfselect;
+    uint32_t gfselect;
+    uint32_t guest_features[2];
+    struct {
+        uint16_t num;
+        bool enabled;
+        uint32_t desc[2];
+        uint32_t avail[2];
+        uint32_t used[2];
+    } vqs[VIRTIO_QUEUE_MAX];
+
     bool ioeventfd_disabled;
     bool ioeventfd_started;
     VirtIOIRQFD *vector_irqfd;

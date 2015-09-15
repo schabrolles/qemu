@@ -80,7 +80,6 @@ typedef struct {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq;
-    uint32_t host_features;
     /* Guest accessible state needing migration and reset */
     uint32_t host_features_sel;
     uint32_t guest_features_sel;
@@ -147,7 +146,7 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
         if (proxy->host_features_sel) {
             return 0;
         }
-        return proxy->host_features;
+        return vdev->host_features;
     case VIRTIO_MMIO_QUEUENUMMAX:
         if (!virtio_queue_get_num(vdev, vdev->queue_sel)) {
             return 0;
@@ -237,15 +236,18 @@ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
                 proxy->guest_page_shift);
         break;
     case VIRTIO_MMIO_QUEUESEL:
-        if (value < VIRTIO_PCI_QUEUE_MAX) {
+        if (value < VIRTIO_QUEUE_MAX) {
             vdev->queue_sel = value;
         }
         break;
     case VIRTIO_MMIO_QUEUENUM:
         DPRINTF("mmio_queue write %d max %d\n", (int)value, VIRTQUEUE_MAX_SIZE);
         virtio_queue_set_num(vdev, vdev->queue_sel, value);
+        /* Note: only call this function for legacy devices */
+        virtio_queue_update_rings(vdev, vdev->queue_sel);
         break;
     case VIRTIO_MMIO_QUEUEALIGN:
+        /* Note: this is only valid for legacy devices */
         virtio_queue_set_align(vdev, vdev->queue_sel, value);
         break;
     case VIRTIO_MMIO_QUEUEPFN:
@@ -257,7 +259,7 @@ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
         }
         break;
     case VIRTIO_MMIO_QUEUENOTIFY:
-        if (value < VIRTIO_PCI_QUEUE_MAX) {
+        if (value < VIRTIO_QUEUE_MAX) {
             virtio_queue_notify(vdev, value);
         }
         break;
@@ -306,13 +308,6 @@ static void virtio_mmio_update_irq(DeviceState *opaque, uint16_t vector)
     qemu_set_irq(proxy->irq, level);
 }
 
-static unsigned int virtio_mmio_get_features(DeviceState *opaque)
-{
-    VirtIOMMIOProxy *proxy = VIRTIO_MMIO(opaque);
-
-    return proxy->host_features;
-}
-
 static int virtio_mmio_load_config(DeviceState *opaque, QEMUFile *f)
 {
     VirtIOMMIOProxy *proxy = VIRTIO_MMIO(opaque);
@@ -344,16 +339,6 @@ static void virtio_mmio_reset(DeviceState *d)
 
 /* virtio-mmio device */
 
-/* This is called by virtio-bus just after the device is plugged. */
-static void virtio_mmio_device_plugged(DeviceState *opaque)
-{
-    VirtIOMMIOProxy *proxy = VIRTIO_MMIO(opaque);
-
-    virtio_add_feature(&proxy->host_features, VIRTIO_F_NOTIFY_ON_EMPTY);
-    proxy->host_features = virtio_bus_get_vdev_features(&proxy->bus,
-                                                        proxy->host_features);
-}
-
 static void virtio_mmio_realizefn(DeviceState *d, Error **errp)
 {
     VirtIOMMIOProxy *proxy = VIRTIO_MMIO(d);
@@ -367,16 +352,10 @@ static void virtio_mmio_realizefn(DeviceState *d, Error **errp)
     sysbus_init_mmio(sbd, &proxy->iomem);
 }
 
-static Property virtio_mmio_properties[] = {
-    DEFINE_VIRTIO_COMMON_FEATURES(VirtIOMMIOProxy, host_features),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static void virtio_mmio_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->props = virtio_mmio_properties;
     dc->realize = virtio_mmio_realizefn;
     dc->reset = virtio_mmio_reset;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
@@ -399,8 +378,6 @@ static void virtio_mmio_bus_class_init(ObjectClass *klass, void *data)
     k->notify = virtio_mmio_update_irq;
     k->save_config = virtio_mmio_save_config;
     k->load_config = virtio_mmio_load_config;
-    k->get_features = virtio_mmio_get_features;
-    k->device_plugged = virtio_mmio_device_plugged;
     k->has_variable_vring_alignment = true;
     bus_class->max_dev = 1;
 }
