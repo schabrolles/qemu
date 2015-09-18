@@ -24,9 +24,6 @@
             .value    = "off",\
         },
 
-#define HW_COMPAT_2_2 \
-        /* empty */
-
 #define HW_COMPAT_2_1 \
         {\
             .driver   = "intel-hda",\
@@ -57,5 +54,8 @@
             .property = "virtio-pci-bus-master-bug-migration",\
             .value    = "on",\
         },
+
+/* The pseries-2.2 machine in PowerKVM 2.1.1 is a pseries-2.1 actually */
+#define HW_COMPAT_2_2 HW_COMPAT_2_1
 
 #endif /* HW_COMPAT_H */
