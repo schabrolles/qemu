@@ -18,7 +18,11 @@ from ctypes import *
 class DebugfsProvider(object):
     def __init__(self):
         self.base = '/sys/kernel/debug/kvm'
-        self._fields = os.listdir(self.base)
+        files = os.listdir(self.base)
+        self._fields = []
+        for f in files:
+            if os.path.isfile(self.base + '/' + f):
+                self._fields.append(f)
     def fields(self):
         return self._fields
     def select(self, fields):
