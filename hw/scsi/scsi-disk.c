@@ -1683,7 +1683,7 @@ static void scsi_disk_emulate_write_same(SCSIDiskReq *r, uint8_t *inbuf)
 {
     SCSIRequest *req = &r->req;
     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, req->dev);
-    uint32_t nb_sectors = scsi_data_cdb_length(r->req.cmd.buf);
+    uint32_t nb_sectors = scsi_data_cdb_xfer(r->req.cmd.buf);
     WriteSameCBData *data;
     uint8_t *buf;
     int i;
@@ -2073,7 +2073,7 @@ static int32_t scsi_disk_dma_command(SCSIRequest *req, uint8_t *buf)
         return 0;
     }
 
-    len = scsi_data_cdb_length(r->req.cmd.buf);
+    len = scsi_data_cdb_xfer(r->req.cmd.buf);
     switch (command) {
     case READ_6:
     case READ_10:
@@ -2404,7 +2404,7 @@ static SCSIRequest *scsi_new_request(SCSIDevice *d, uint32_t tag, uint32_t lun,
     DPRINTF("Command: lun=%d tag=0x%x data=0x%02x", lun, tag, buf[0]);
     {
         int i;
-        for (i = 1; i < req->cmd.len; i++) {
+        for (i = 1; i < scsi_cdb_length(buf); i++) {
             printf(" 0x%02x", buf[i]);
         }
         printf("\n");
@@ -2494,12 +2494,8 @@ static int scsi_block_initfn(SCSIDevice *dev)
     return scsi_initfn(&s->qdev);
 }
 
-static SCSIRequest *scsi_block_new_request(SCSIDevice *d, uint32_t tag,
-                                           uint32_t lun, uint8_t *buf,
-                                           void *hba_private)
+static bool scsi_block_is_passthrough(SCSIDiskState *s, uint8_t *buf)
 {
-    SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, d);
-
     switch (buf[0]) {
     case READ_6:
     case READ_10:
@@ -2516,9 +2512,9 @@ static SCSIRequest *scsi_block_new_request(SCSIDevice *d, uint32_t tag,
     case WRITE_VERIFY_12:
     case WRITE_VERIFY_16:
         /* If we are not using O_DIRECT, we might read stale data from the
-	 * host cache if writes were made using other commands than these
-	 * ones (such as WRITE SAME or EXTENDED COPY, etc.).  So, without
-	 * O_DIRECT everything must go through SG_IO.
+         * host cache if writes were made using other commands than these
+         * ones (such as WRITE SAME or EXTENDED COPY, etc.).  So, without
+         * O_DIRECT everything must go through SG_IO.
          */
         if (bdrv_get_flags(s->qdev.conf.bs) & BDRV_O_NOCACHE) {
             break;
@@ -2535,14 +2531,45 @@ static SCSIRequest *scsi_block_new_request(SCSIDevice *d, uint32_t tag,
          * just make scsi-block operate the same as scsi-generic for them.
          */
         if (s->qdev.type != TYPE_ROM) {
-            return scsi_req_alloc(&scsi_disk_dma_reqops, &s->qdev, tag, lun,
-                                  hba_private);
+            return false;
         }
+        break;
+
+    default:
+        break;
     }
 
-    return scsi_req_alloc(&scsi_generic_req_ops, &s->qdev, tag, lun,
-                          hba_private);
+    return true;
 }
+
+
+static SCSIRequest *scsi_block_new_request(SCSIDevice *d, uint32_t tag,
+                                           uint32_t lun, uint8_t *buf,
+                                           void *hba_private)
+{
+    SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, d);
+
+    if (scsi_block_is_passthrough(s, buf)) {
+        return scsi_req_alloc(&scsi_generic_req_ops, &s->qdev, tag, lun,
+                              hba_private);
+    } else {
+        return scsi_req_alloc(&scsi_disk_dma_reqops, &s->qdev, tag, lun,
+                              hba_private);
+    }
+}
+
+static int scsi_block_parse_cdb(SCSIDevice *d, SCSICommand *cmd,
+                                  uint8_t *buf, void *hba_private)
+{
+    SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, d);
+
+    if (scsi_block_is_passthrough(s, buf)) {
+        return scsi_bus_parse_cdb(&s->qdev, cmd, buf, hba_private);
+    } else {
+        return scsi_req_parse_cdb(&s->qdev, cmd, buf);
+    }
+}
+
 #endif
 
 #define DEFINE_SCSI_DISK_PROPERTIES()                                \
@@ -2652,6 +2679,7 @@ static void scsi_block_class_initfn(ObjectClass *klass, void *data)
     sc->init         = scsi_block_initfn;
     sc->destroy      = scsi_destroy;
     sc->alloc_req    = scsi_block_new_request;
+    sc->parse_cdb    = scsi_block_parse_cdb;
     dc->fw_name = "disk";
     dc->desc = "SCSI block device passthrough";
     dc->reset = scsi_disk_reset;

@@ -1928,6 +1928,11 @@ static void spapr_machine_2_1_class_init(ObjectClass *oc, void *data)
     MachineClass *mc = MACHINE_CLASS(oc);
     static GlobalProperty compat_props[] = {
         {
+            .driver   = "virtio-scsi-pci",
+            .property = "any_layout",
+            .value    = "off",
+        },
+        {
             .driver   = TYPE_SPAPR_PCI_HOST_BRIDGE,
             .property = "ddw",
             .value    = stringify(off),
