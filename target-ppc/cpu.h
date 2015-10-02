@@ -2329,4 +2329,6 @@ int ppc_get_vcpu_dt_id(PowerPCCPU *cpu);
  */
 PowerPCCPU *ppc_get_vcpu_by_dt_id(int cpu_dt_id);
 
+bool virtio_is_little_endian_powerkvm_211(void);
+
 #endif /* !defined (__CPU_PPC_H__) */
