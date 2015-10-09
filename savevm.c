@@ -996,6 +996,14 @@ int qemu_loadvm_state(QEMUFile *f)
             instance_id = qemu_get_be32(f);
             version_id = qemu_get_be32(f);
 
+            if (source_is_powerkvm_211 &&
+                strstr(idstr, "HACK_virtio_balloon")) {
+                error_report("warning: PowerKVM-2.1.1 compat mode for instance "
+                             "'virtio-balloon'");
+                qemu_get_be32(f); /* @guest_bug_state */
+                break;
+            }
+
             trace_qemu_loadvm_state_section_startfull(section_id, idstr,
                                                       instance_id, version_id);
             /* Find savevm section */
