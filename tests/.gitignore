@@ -13,6 +13,7 @@ test-bitops
 test-coroutine
 test-crypto-cipher
 test-crypto-hash
+test-crypto-secret
 test-cutils
 test-hbitmap
 test-int128
