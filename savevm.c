@@ -1106,17 +1106,6 @@ out:
     return ret;
 }
 
-static BlockDriverState *find_vmstate_bs(void)
-{
-    BlockDriverState *bs = NULL;
-    while ((bs = bdrv_next(bs))) {
-        if (bdrv_can_snapshot(bs)) {
-            return bs;
-        }
-    }
-    return NULL;
-}
-
 void hmp_savevm(Monitor *mon, const QDict *qdict)
 {
     BlockDriverState *bs, *bs1;
@@ -1145,8 +1134,8 @@ void hmp_savevm(Monitor *mon, const QDict *qdict)
         return;
     }
 
-    bs = find_vmstate_bs();
-    if (!bs) {
+    bs = bdrv_all_find_vmstate_bs();
+    if (bs == NULL) {
         monitor_printf(mon, "No block device can accept snapshots\n");
         return;
     }
@@ -1248,7 +1237,7 @@ int load_vmstate(const char *name)
         return ret;
     }
 
-    bs_vm_state = find_vmstate_bs();
+    bs_vm_state = bdrv_all_find_vmstate_bs();
     if (!bs_vm_state) {
         error_report("No block device supports snapshots");
         return -ENOTSUP;
@@ -1315,7 +1304,7 @@ void hmp_info_snapshots(Monitor *mon, const QDict *qdict)
     int total;
     int *available_snapshots;
 
-    bs = find_vmstate_bs();
+    bs = bdrv_all_find_vmstate_bs();
     if (!bs) {
         monitor_printf(mon, "No available block device supports snapshots\n");
         return;
