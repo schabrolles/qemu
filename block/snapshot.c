@@ -252,9 +252,9 @@ int bdrv_snapshot_delete(BlockDriverState *bs,
     return -ENOTSUP;
 }
 
-void bdrv_snapshot_delete_by_id_or_name(BlockDriverState *bs,
-                                        const char *id_or_name,
-                                        Error **errp)
+int bdrv_snapshot_delete_by_id_or_name(BlockDriverState *bs,
+                                       const char *id_or_name,
+                                       Error **errp)
 {
     int ret;
     Error *local_err = NULL;
@@ -269,6 +269,7 @@ void bdrv_snapshot_delete_by_id_or_name(BlockDriverState *bs,
     if (ret < 0) {
         error_propagate(errp, local_err);
     }
+    return ret;
 }
 
 int bdrv_snapshot_list(BlockDriverState *bs,
