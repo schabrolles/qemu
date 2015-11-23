@@ -78,6 +78,7 @@ check-unit-y += tests/test-write-threshold$(EXESUF)
 gcov-files-test-write-threshold-y = block/write-threshold.c
 check-unit-$(CONFIG_GNUTLS_HASH) += tests/test-crypto-hash$(EXESUF)
 check-unit-y += tests/test-crypto-cipher$(EXESUF)
+check-unit-y += tests/test-base64$(EXESUF)
 
 check-block-$(CONFIG_POSIX) += tests/qemu-iotests-quick.sh
 
@@ -285,6 +286,8 @@ tests/test-vmstate$(EXESUF): tests/test-vmstate.o \
 	migration/vmstate.o migration/qemu-file.o migration/qemu-file-buf.o \
         migration/qemu-file-unix.o qjson.o \
 	$(test-qom-obj-y)
+tests/test-base64$(EXESUF): tests/test-base64.o \
+	libqemuutil.a libqemustub.a
 
 tests/test-qapi-types.c tests/test-qapi-types.h :\
 $(SRC_PATH)/tests/qapi-schema/qapi-schema-test.json $(SRC_PATH)/scripts/qapi-types.py
