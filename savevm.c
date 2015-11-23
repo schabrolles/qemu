@@ -1118,6 +1118,7 @@ void hmp_savevm(Monitor *mon, const QDict *qdict)
     struct tm tm;
     const char *name = qdict_get_try_str(qdict, "name");
     Error *local_err = NULL;
+    AioContext *aio_context;
 
     if (!bdrv_all_can_snapshot(&bs)) {
         monitor_printf(mon, "Device '%s' is writable but does not "
@@ -1139,9 +1140,12 @@ void hmp_savevm(Monitor *mon, const QDict *qdict)
         monitor_printf(mon, "No block device can accept snapshots\n");
         return;
     }
+    aio_context = bdrv_get_aio_context(bs);
 
     saved_vm_running = runstate_is_running();
     vm_stop(RUN_STATE_SAVE_VM);
+
+    aio_context_acquire(aio_context);
 
     memset(sn, 0, sizeof(*sn));
 
@@ -1187,6 +1191,7 @@ void hmp_savevm(Monitor *mon, const QDict *qdict)
     }
 
  the_end:
+    aio_context_release(aio_context);
     if (saved_vm_running) {
         vm_start();
     }
@@ -1224,6 +1229,7 @@ int load_vmstate(const char *name)
     QEMUSnapshotInfo sn;
     QEMUFile *f;
     int ret;
+    AioContext *aio_context;
 
     if (!bdrv_all_can_snapshot(&bs)) {
         error_report("Device '%s' is writable but does not support snapshots.",
@@ -1242,9 +1248,12 @@ int load_vmstate(const char *name)
         error_report("No block device supports snapshots");
         return -ENOTSUP;
     }
+    aio_context = bdrv_get_aio_context(bs_vm_state);
 
     /* Don't even try to load empty VM states */
+    aio_context_acquire(aio_context);
     ret = bdrv_snapshot_find(bs_vm_state, &sn, name);
+    aio_context_release(aio_context);
     if (ret < 0) {
         return ret;
     } else if (sn.vm_state_size == 0) {
@@ -1271,9 +1280,12 @@ int load_vmstate(const char *name)
     }
 
     qemu_system_reset(VMRESET_SILENT);
-    ret = qemu_loadvm_state(f);
 
+    aio_context_acquire(aio_context);
+    ret = qemu_loadvm_state(f);
     qemu_fclose(f);
+    aio_context_release(aio_context);
+
     if (ret < 0) {
         error_report("Error %d while loading VM state", ret);
         return ret;
@@ -1303,14 +1315,19 @@ void hmp_info_snapshots(Monitor *mon, const QDict *qdict)
     int nb_sns, i;
     int total;
     int *available_snapshots;
+    AioContext *aio_context;
 
     bs = bdrv_all_find_vmstate_bs();
     if (!bs) {
         monitor_printf(mon, "No available block device supports snapshots\n");
         return;
     }
+    aio_context = bdrv_get_aio_context(bs);
 
+    aio_context_acquire(aio_context);
     nb_sns = bdrv_snapshot_list(bs, &sn_tab);
+    aio_context_release(aio_context);
+
     if (nb_sns < 0) {
         monitor_printf(mon, "bdrv_snapshot_list: error %d\n", nb_sns);
         return;
