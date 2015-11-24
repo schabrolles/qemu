@@ -950,7 +950,7 @@ static void spapr_finalize_fdt(sPAPRMachineState *spapr,
     }
 
     /* PowerKVM always have in-kernel H_RANDOM. Let's use it. */
-    if (kvmppc_enable_hwrng() ||
+    if (!kvmppc_enable_hwrng() ||
         object_resolve_path_type("", TYPE_SPAPR_RNG, NULL)) {
         ret = spapr_rng_populate_dt(fdt);
         if (ret < 0) {
