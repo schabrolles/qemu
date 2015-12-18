@@ -1151,10 +1151,10 @@ void spapr_pci_msi_init(sPAPREnvironment *spapr, hwaddr addr)
  * Dynamic DMA windows
  */
 static int spapr_pci_ddw_query(sPAPRPHBState *sphb,
-                               uint32_t *windows_available,
+                               uint32_t *windows_supported,
                                uint32_t *page_size_mask)
 {
-    *windows_available = 0;
+    *windows_supported = 0;
     *page_size_mask = DDW_PGSIZE_64K | DDW_PGSIZE_16M;
 
     return 0;

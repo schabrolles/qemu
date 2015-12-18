@@ -61,7 +61,7 @@ struct sPAPRPHBClass {
 #define DDW_PGSIZE_256M     0x40
 #define DDW_PGSIZE_16G      0x80
 
-    int (*ddw_query)(sPAPRPHBState *sphb, uint32_t *windows_available,
+    int (*ddw_query)(sPAPRPHBState *sphb, uint32_t *windows_supported,
                      uint32_t *page_size_mask);
     int (*ddw_create)(sPAPRPHBState *sphb, uint32_t page_shift,
                       uint32_t window_shift, uint32_t liobn,

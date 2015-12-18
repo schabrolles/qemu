@@ -21,8 +21,40 @@
 #include "hw/pci-host/spapr.h"
 #include "trace.h"
 
+static int spapr_phb_get_active_win_num_cb(Object *child, void *opaque)
+{
+    sPAPRTCETable *tcet;
+
+    tcet = (sPAPRTCETable *) object_dynamic_cast(child, TYPE_SPAPR_TCE_TABLE);
+    if (tcet) {
+        ++*(unsigned *)opaque;
+    }
+    return 0;
+}
+
+static unsigned spapr_phb_get_active_win_num(sPAPRPHBState *sphb)
+{
+    unsigned ret = 0;
+
+    object_child_foreach(OBJECT(sphb), spapr_phb_get_active_win_num_cb, &ret);
+
+    return ret;
+}
+
+static unsigned spapr_phb_get_free_liobn(sPAPRPHBState *sphb)
+{
+    unsigned active = spapr_phb_get_active_win_num(sphb);
+    uint32_t liobn = SPAPR_PCI_LIOBN(sphb->index, active + 1);
+
+    if (spapr_tce_find_by_liobn(liobn)) {
+        return 0;
+    }
+
+    return liobn;
+}
+
 static uint32_t spapr_iommu_fixmask(struct ppc_one_seg_page_size *sps,
-                                    uint32_t query_mask)
+                                    uint32_t page_mask)
 {
     int i, j;
     uint32_t mask = 0;
@@ -40,7 +72,7 @@ static uint32_t spapr_iommu_fixmask(struct ppc_one_seg_page_size *sps,
     for (i = 0; i < PPC_PAGE_SIZES_MAX_SZ; i++) {
         for (j = 0; j < ARRAY_SIZE(masks); ++j) {
             if ((sps[i].page_shift == masks[j].shift) &&
-                    (query_mask & masks[j].mask)) {
+                    (page_mask & (1ULL << masks[j].shift))) {
                 mask |= masks[j].mask;
             }
         }
@@ -60,7 +92,9 @@ static void rtas_ibm_query_pe_dma_window(PowerPCCPU *cpu,
     sPAPRPHBClass *spc;
     uint64_t buid;
     uint32_t addr, pgmask = 0;
-    uint32_t windows_available = 0, page_size_mask = 0;
+    uint32_t windows_supported = 0, page_size_mask = 0;
+    uint32_t avail;
+    unsigned current;
     long ret;
 
     if ((nargs != 3) || (nret != 5)) {
@@ -79,18 +113,22 @@ static void rtas_ibm_query_pe_dma_window(PowerPCCPU *cpu,
         goto hw_error_exit;
     }
 
-    ret = spc->ddw_query(sphb, &windows_available, &page_size_mask);
-    trace_spapr_iommu_ddw_query(buid, addr, windows_available,
+    ret = spc->ddw_query(sphb, &windows_supported, &page_size_mask);
+    trace_spapr_iommu_ddw_query(buid, addr, windows_supported,
                                 page_size_mask, pgmask, ret);
     if (ret) {
         goto hw_error_exit;
     }
 
+    current = spapr_phb_get_active_win_num(sphb);
+    avail = (windows_supported > current) ?
+            (windows_supported - current) : 0;
+
     /* Work out supported page masks */
     pgmask = spapr_iommu_fixmask(env->sps.sps, page_size_mask);
 
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
-    rtas_st(rets, 1, windows_available);
+    rtas_st(rets, 1, avail);
 
     /*
      * This is "Largest contiguous block of TCEs allocated specifically
@@ -99,7 +137,7 @@ static void rtas_ibm_query_pe_dma_window(PowerPCCPU *cpu,
      */
     rtas_st(rets, 2, ram_size >> SPAPR_TCE_PAGE_SHIFT);
     rtas_st(rets, 3, pgmask);
-    rtas_st(rets, 4, pgmask); /* DMA migration mask */
+    rtas_st(rets, 4, 0); /* DMA migration mask */
     return;
 
 hw_error_exit:
@@ -141,8 +179,11 @@ static void rtas_ibm_create_pe_dma_window(PowerPCCPU *cpu,
 
     page_shift = rtas_ld(args, 3);
     window_shift = rtas_ld(args, 4);
-    /* Default 32bit window#0 is always there so +1 */
-    liobn = SPAPR_PCI_LIOBN(sphb->index, sphb->ddw_num + 1);
+    liobn = spapr_phb_get_free_liobn(sphb);
+
+    if ((window_shift < page_shift) || !liobn) {
+        goto param_error_exit;
+    }
 
     ret = spc->ddw_create(sphb, page_shift, window_shift, liobn, &tcet);
     trace_spapr_iommu_ddw_create(buid, addr, 1ULL << page_shift,

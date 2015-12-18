@@ -41,15 +41,6 @@ static void spapr_phb_vfio_finish_realize(sPAPRPHBState *sphb, Error **errp)
     }
 
     ret = vfio_container_ioctl(&svphb->phb.iommu_as, svphb->iommugroupid,
-                               VFIO_CHECK_EXTENSION,
-                               (void *) VFIO_SPAPR_TCE_IOMMU);
-    if (ret != 1) {
-        error_setg_errno(errp, -ret,
-                         "spapr-vfio: SPAPR extension is not supported");
-        return;
-    }
-
-    ret = vfio_container_ioctl(&svphb->phb.iommu_as, svphb->iommugroupid,
                                VFIO_IOMMU_SPAPR_TCE_GET_INFO, &info);
     if (ret) {
         error_setg_errno(errp, -ret,
@@ -73,7 +64,7 @@ static void spapr_phb_vfio_finish_realize(sPAPRPHBState *sphb, Error **errp)
     object_unref(OBJECT(tcet));
 
     if (sphb->ddw_enabled) {
-        sphb->ddw_enabled = !!(info.flags & VFIO_IOMMU_SPAPR_TCE_FLAG_DDW);
+        sphb->ddw_enabled = !!(info.flags & VFIO_IOMMU_SPAPR_INFO_DDW);
     }
 }
 
@@ -133,21 +124,21 @@ static int spapr_phb_vfio_eeh_handler(sPAPRPHBState *sphb, int req, int opt)
 }
 
 static int spapr_pci_vfio_ddw_query(sPAPRPHBState *sphb,
-                                    uint32_t *windows_available,
+                                    uint32_t *windows_supported,
                                     uint32_t *page_size_mask)
 {
     sPAPRPHBVFIOState *svphb = SPAPR_PCI_VFIO_HOST_BRIDGE(sphb);
-    struct vfio_iommu_spapr_tce_query query = { .argsz = sizeof(query) };
+    struct vfio_iommu_spapr_tce_info info = { .argsz = sizeof(info) };
     int ret;
 
-    ret = vfio_container_ioctl(&sphb->iommu_as, svphb->iommugroupid,
-                               VFIO_IOMMU_SPAPR_TCE_QUERY, &query);
+    ret = vfio_container_ioctl(&svphb->phb.iommu_as, svphb->iommugroupid,
+                               VFIO_IOMMU_SPAPR_TCE_GET_INFO, &info);
     if (ret) {
         return ret;
     }
 
-    *windows_available = query.windows_available;
-    *page_size_mask = query.page_size_mask;
+    *windows_supported = info.ddw.max_dynamic_windows_supported;
+    *page_size_mask = info.ddw.pgsizes;
 
     return ret;
 }
@@ -160,7 +151,8 @@ static int spapr_pci_vfio_ddw_create(sPAPRPHBState *sphb, uint32_t page_shift,
     struct vfio_iommu_spapr_tce_create create = {
         .argsz = sizeof(create),
         .page_shift = page_shift,
-        .window_shift = window_shift,
+        .window_size = 1ULL << window_shift,
+        .levels = 1,
         .start_addr = 0
     };
     int ret;
@@ -197,19 +189,6 @@ static int spapr_pci_vfio_ddw_remove(sPAPRPHBState *sphb, sPAPRTCETable *tcet)
     return ret;
 }
 
-static int spapr_pci_vfio_ddw_reset(sPAPRPHBState *sphb)
-{
-    sPAPRPHBVFIOState *svphb = SPAPR_PCI_VFIO_HOST_BRIDGE(sphb);
-    struct vfio_iommu_spapr_tce_reset reset = { .argsz = sizeof(reset) };
-    int ret;
-
-    spapr_pci_ddw_reset(sphb);
-    ret = vfio_container_ioctl(&sphb->iommu_as, svphb->iommugroupid,
-                               VFIO_IOMMU_SPAPR_TCE_RESET, &reset);
-
-    return ret;
-}
-
 static void spapr_phb_vfio_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -221,7 +200,6 @@ static void spapr_phb_vfio_class_init(ObjectClass *klass, void *data)
     spc->ddw_query = spapr_pci_vfio_ddw_query;
     spc->ddw_create = spapr_pci_vfio_ddw_create;
     spc->ddw_remove = spapr_pci_vfio_ddw_remove;
-    spc->ddw_reset = spapr_pci_vfio_ddw_reset;
 }
 
 static const TypeInfo spapr_phb_vfio_info = {
