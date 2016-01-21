@@ -38,6 +38,7 @@
 #include "qemu/iov.h"
 #include "sysemu/sysemu.h"
 #include "qmp-commands.h"
+#include "crypto/secret.h"
 
 #include <iscsi/iscsi.h>
 #include <iscsi/scsi-lowlevel.h>
@@ -978,6 +979,8 @@ static void parse_chap(struct iscsi_context *iscsi, const char *target,
     QemuOpts *opts;
     const char *user = NULL;
     const char *password = NULL;
+    const char *secretid;
+    char *secret = NULL;
 
     list = qemu_find_opts("iscsi");
     if (!list) {
@@ -997,8 +1000,20 @@ static void parse_chap(struct iscsi_context *iscsi, const char *target,
         return;
     }
 
+    secretid = qemu_opt_get(opts, "password-secret");
     password = qemu_opt_get(opts, "password");
-    if (!password) {
+    if (secretid && password) {
+        error_setg(errp, "'password' and 'password-secret' properties are "
+                   "mutually exclusive");
+        return;
+    }
+    if (secretid) {
+        secret = qcrypto_secret_lookup_as_utf8(secretid, errp);
+        if (!secret) {
+            return;
+        }
+        password = secret;
+    } else if (!password) {
         error_setg(errp, "CHAP username specified but no password was given");
         return;
     }
@@ -1006,6 +1021,8 @@ static void parse_chap(struct iscsi_context *iscsi, const char *target,
     if (iscsi_set_initiator_username_pwd(iscsi, user, password)) {
         error_setg(errp, "Failed to set initiator username and password");
     }
+
+    g_free(secret);
 }
 
 static void parse_header_digest(struct iscsi_context *iscsi, const char *target,
@@ -1713,6 +1730,11 @@ static QemuOptsList qemu_iscsi_opts = {
             .name = "password",
             .type = QEMU_OPT_STRING,
             .help = "password for CHAP authentication to target",
+        },{
+            .name = "password-secret",
+            .type = QEMU_OPT_STRING,
+            .help = "ID of the secret providing password for CHAP "
+                    "authentication to target",
         },{
             .name = "header-digest",
             .type = QEMU_OPT_STRING,
