@@ -1702,7 +1702,13 @@ uint64_t kvmppc_rma_size(uint64_t current_size, unsigned int hash_shift)
 
 bool kvmppc_spapr_use_multitce(void)
 {
-    return cap_spapr_multitce;
+    if (cap_spapr_multitce) {
+        return
+            !kvmppc_enable_hcall(kvm_state, H_PUT_TCE_INDIRECT) ||
+            !kvmppc_enable_hcall(kvm_state, H_STUFF_TCE);
+    }
+
+    return false;
 }
 
 void *kvmppc_create_spapr_tce(uint32_t liobn, uint32_t window_size, int *pfd,
