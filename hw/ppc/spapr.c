@@ -1626,6 +1626,11 @@ static void ppc_spapr_init(QEMUMachineInitArgs *args)
         qemu_register_reset(spapr_cpu_reset, cpu);
     }
 
+    if (kvm_enabled()) {
+        /* Enable H_LOGICAL_CI_* so SLOF can talk to in-kernel devices */
+        kvmppc_enable_logical_ci_hcalls();
+    }
+
     /* allocate RAM */
     spapr->ram_limit = ram_size;
     if (spapr->ram_limit > rma_alloc_size) {
