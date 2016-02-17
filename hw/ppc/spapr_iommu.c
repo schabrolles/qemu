@@ -212,8 +212,9 @@ void spapr_tce_set_need_vfio(sPAPRTCETable *tcet, bool need_vfio)
 {
     size_t table_size = tcet->nb_table * sizeof(uint64_t);
     void *newtable;
+    bool tcet_can_vfio = tcet->fd < 0;
 
-    if (need_vfio == tcet->need_vfio) {
+    if (need_vfio == tcet_can_vfio) {
         /* Nothing to do */
         return;
     }
@@ -223,8 +224,6 @@ void spapr_tce_set_need_vfio(sPAPRTCETable *tcet, bool need_vfio)
          * TCEs yet */
         return;
     }
-
-    tcet->need_vfio = true;
 
     if (tcet->fd < 0) {
         /* Table is already in userspace, nothing to be do */
@@ -263,7 +262,7 @@ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn)
     return tcet;
 }
 
-static void spapr_tce_table_do_enable(sPAPRTCETable *tcet)
+static void spapr_tce_table_do_enable(sPAPRTCETable *tcet, bool need_vfio)
 {
     if (!tcet->nb_table) {
         return;
@@ -273,7 +272,7 @@ static void spapr_tce_table_do_enable(sPAPRTCETable *tcet)
                                         tcet->page_shift,
                                         tcet->nb_table,
                                         &tcet->fd,
-                                        tcet->need_vfio);
+                                        need_vfio);
 
     memory_region_set_size(&tcet->iommu,
                            (uint64_t)tcet->nb_table << tcet->page_shift);
@@ -293,9 +292,8 @@ void spapr_tce_table_enable(sPAPRTCETable *tcet,
     tcet->bus_offset = bus_offset;
     tcet->page_shift = page_shift;
     tcet->nb_table = nb_table;
-    tcet->need_vfio = need_vfio;
 
-    spapr_tce_table_do_enable(tcet);
+    spapr_tce_table_do_enable(tcet, need_vfio);
 }
 
 void spapr_tce_table_disable(sPAPRTCETable *tcet)
@@ -314,7 +312,6 @@ void spapr_tce_table_disable(sPAPRTCETable *tcet)
     tcet->bus_offset = 0;
     tcet->page_shift = 0;
     tcet->nb_table = 0;
-    tcet->need_vfio = false;
 }
 
 static void spapr_tce_table_unrealize(DeviceState *dev, Error **errp)
