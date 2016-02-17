@@ -318,10 +318,10 @@ static hwaddr vfio_container_granularity(VFIOContainer *container)
     return (hwaddr)1 << ctz64(container->iova_pgsizes);
 }
 
-static void vfio_listener_region_add(MemoryListener *listener,
+static void vfio_listener_region_add(VFIOMemoryListener *vlistener,
                                      MemoryRegionSection *section)
 {
-    VFIOContainer *container = container_of(listener, VFIOContainer, listener);
+    VFIOContainer *container = vlistener->container;
     hwaddr iova, end;
     Int128 llend;
     void *vaddr;
@@ -427,10 +427,10 @@ fail:
     }
 }
 
-static void vfio_listener_region_del(MemoryListener *listener,
+static void vfio_listener_region_del(VFIOMemoryListener *vlistener,
                                      MemoryRegionSection *section)
 {
-    VFIOContainer *container = container_of(listener, VFIOContainer, listener);
+    VFIOContainer *container = vlistener->container;
     hwaddr iova, end;
     int ret;
     MemoryRegion *iommu = NULL;
@@ -494,14 +494,33 @@ static void vfio_listener_region_del(MemoryListener *listener,
     }
 }
 
-static const MemoryListener vfio_memory_listener = {
-    .region_add = vfio_listener_region_add,
-    .region_del = vfio_listener_region_del,
+static void vfio_iommu_listener_region_add(MemoryListener *listener,
+                                           MemoryRegionSection *section)
+{
+    VFIOMemoryListener *vlistener = container_of(listener, VFIOMemoryListener,
+                                                 listener);
+
+    vfio_listener_region_add(vlistener, section);
+}
+
+
+static void vfio_iommu_listener_region_del(MemoryListener *listener,
+                                           MemoryRegionSection *section)
+{
+    VFIOMemoryListener *vlistener = container_of(listener, VFIOMemoryListener,
+                                                 listener);
+
+    vfio_listener_region_del(vlistener, section);
+}
+
+static const MemoryListener vfio_iommu_listener = {
+    .region_add = vfio_iommu_listener_region_add,
+    .region_del = vfio_iommu_listener_region_del,
 };
 
 static void vfio_listener_release(VFIOContainer *container)
 {
-    memory_listener_unregister(&container->listener);
+    memory_listener_unregister(&container->iommu_listener.listener);
 }
 
 int vfio_mmap_region(Object *obj, VFIORegion *region,
@@ -770,9 +789,11 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
         goto free_container_exit;
     }
 
-    container->listener = vfio_memory_listener;
+    container->iommu_listener.container = container;
+    container->iommu_listener.listener = vfio_iommu_listener;
 
-    memory_listener_register(&container->listener, container->space->as);
+    memory_listener_register(&container->iommu_listener.listener,
+                             container->space->as);
 
     if (container->error) {
         ret = container->error;

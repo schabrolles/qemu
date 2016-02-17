@@ -57,12 +57,19 @@ typedef struct VFIOAddressSpace {
     QLIST_ENTRY(VFIOAddressSpace) list;
 } VFIOAddressSpace;
 
+typedef struct VFIOContainer VFIOContainer;
+
+typedef struct VFIOMemoryListener {
+    struct MemoryListener listener;
+    VFIOContainer *container;
+} VFIOMemoryListener;
+
 struct VFIOGroup;
 
 typedef struct VFIOContainer {
     VFIOAddressSpace *space;
     int fd; /* /dev/vfio/vfio, empowered by the attached groups */
-    MemoryListener listener;
+    VFIOMemoryListener iommu_listener;
     int error;
     bool initialized;
     /*
