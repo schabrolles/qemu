@@ -928,7 +928,9 @@ static void spapr_finalize_fdt(sPAPRMachineState *spapr,
         exit(1);
     }
 
-    if (object_resolve_path_type("", TYPE_SPAPR_RNG, NULL)) {
+    /* PowerKVM always have in-kernel H_RANDOM. Let's use it. */
+    if (!kvmppc_enable_hwrng() ||
+        object_resolve_path_type("", TYPE_SPAPR_RNG, NULL)) {
         ret = spapr_rng_populate_dt(fdt);
         if (ret < 0) {
             fprintf(stderr, "could not set up rng device in the fdt\n");
