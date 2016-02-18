@@ -1742,6 +1742,11 @@ static inline bool section_from_powerkvm211(const SaveStateEntry *se,
         source_is_powerkvm_211 = true;
         return true;
     }
+    if (version_id == 3 && !strcmp(se->idstr, "spapr_pci")) {
+        error_report("warning: PowerKVM-2.1.1 compat mode for section 'spapr_pci'");
+        return true;
+    }
+
     return false;
 }
 

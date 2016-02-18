@@ -1559,6 +1559,16 @@ static int spapr_pci_post_load(void *opaque, int version_id)
     return 0;
 }
 
+static bool is_powerkvm_211(void *opaque, int version_id)
+{
+    if (version_id == 3) {
+        error_report("warning: PowerKVM-2.1.1 compat mode for ex- field "
+                     "'spapr_pci::ddw_num'");
+        return true;
+    }
+    return false;
+}
+
 static const VMStateDescription vmstate_spapr_pci = {
     .name = "spapr_pci",
     .version_id = 2,
@@ -1577,6 +1587,7 @@ static const VMStateDescription vmstate_spapr_pci = {
         VMSTATE_INT32(msi_devs_num, sPAPRPHBState),
         VMSTATE_STRUCT_VARRAY_ALLOC(msi_devs, sPAPRPHBState, msi_devs_num, 0,
                                     vmstate_spapr_pci_msi, spapr_pci_msi_mig),
+        VMSTATE_UNUSED_TEST(is_powerkvm_211, sizeof(uint32_t)),
         VMSTATE_END_OF_LIST()
     },
 };

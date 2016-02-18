@@ -90,6 +90,13 @@ static inline bool object_from_powerkvm211(const VMStateDescription *vmsd,
             return true;
         }
     }
+    if (version_id == 3 && !strcmp(vmsd->name, "spapr_pci")) {
+        if (!field) {
+            error_report("warning: PowerKVM-2.1.1 compat mode for object "
+                         "'spapr_pci'");
+            return true;
+        }
+    }
     return false;
 }
 
