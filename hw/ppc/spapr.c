@@ -1253,6 +1253,8 @@ static bool spapr_vga_init(PCIBus *pci_bus, Error **errp)
     }
 }
 
+extern bool source_is_powerkvm_211;
+
 static int spapr_post_load(void *opaque, int version_id)
 {
     sPAPRMachineState *spapr = (sPAPRMachineState *)opaque;
@@ -1262,7 +1264,8 @@ static int spapr_post_load(void *opaque, int version_id)
      * RTC, so the RTC offset was stored directly in sPAPREnvironment.
      * So when migrating from those versions, poke the incoming offset
      * value into the RTC device */
-    if (version_id < 3) {
+    if (version_id < 3 ||
+        (version_id == 3 && source_is_powerkvm_211)) {
         err = spapr_rtc_import_offset(spapr->rtc, spapr->rtc_offset);
     }
 
@@ -1272,6 +1275,16 @@ static int spapr_post_load(void *opaque, int version_id)
 static bool version_before_3(void *opaque, int version_id)
 {
     return version_id < 3;
+}
+
+static bool version_before_3_or_powerkvm_211(void *opaque, int version_id)
+{
+    if (version_id == 3 && source_is_powerkvm_211) {
+        error_report("warning: PowerKVM-2.1.1 compat mode for field "
+                     "'spapr::rtc_offset'");
+        return true;
+    }
+    return version_before_3(opaque, version_id);
 }
 
 static const VMStateDescription vmstate_spapr = {
@@ -1284,7 +1297,8 @@ static const VMStateDescription vmstate_spapr = {
         VMSTATE_UNUSED_BUFFER(version_before_3, 0, 4),
 
         /* RTC offset */
-        VMSTATE_UINT64_TEST(rtc_offset, sPAPRMachineState, version_before_3),
+        VMSTATE_UINT64_TEST(rtc_offset, sPAPRMachineState,
+                            version_before_3_or_powerkvm_211),
 
         VMSTATE_PPC_TIMEBASE_V(tb, sPAPRMachineState, 2),
         VMSTATE_END_OF_LIST()

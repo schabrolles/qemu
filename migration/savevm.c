@@ -1732,11 +1732,14 @@ void loadvm_free_handlers(MigrationIncomingState *mis)
     }
 }
 
+bool source_is_powerkvm_211 = false;
+
 static inline bool section_from_powerkvm211(const SaveStateEntry *se,
                                             int version_id)
 {
     if (version_id == 6 && !strcmp(se->idstr, "cpu")) {
         error_report("warning: PowerKVM-2.1.1 compat mode for section 'cpu'");
+        source_is_powerkvm_211 = true;
         return true;
     }
     return false;
@@ -1963,6 +1966,7 @@ int qemu_loadvm_state(QEMUFile *f)
 
     cpu_synchronize_all_post_init();
 
+    source_is_powerkvm_211 = false;
     return ret;
 }
 
