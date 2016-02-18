@@ -192,6 +192,11 @@ static int spapr_tce_table_post_load(void *opaque, int version_id)
     return 0;
 }
 
+static bool version_before_3(void *opaque, int version_id)
+{
+    return version_id < 3;
+}
+
 static const VMStateDescription vmstate_spapr_tce_table = {
     .name = "spapr_iommu",
     .version_id = 3,
@@ -201,6 +206,7 @@ static const VMStateDescription vmstate_spapr_tce_table = {
     .fields      = (VMStateField []) {
         /* Sanity check */
         VMSTATE_UINT32_EQUAL(liobn, sPAPRTCETable),
+        VMSTATE_UNUSED_TEST(version_before_3, sizeof(uint32_t)),
 
         /* IOMMU state */
         VMSTATE_BOOL_V(enabled, sPAPRTCETable, 3),
