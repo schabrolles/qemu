@@ -169,6 +169,19 @@ static void spapr_tce_table_pre_save(void *opaque)
 
 static void spapr_tce_table_do_enable(sPAPRTCETable *tcet, bool vfio_accel);
 
+static int spapr_tce_table_pre_load(void *opaque)
+{
+    sPAPRTCETable *tcet = SPAPR_TCE_TABLE(opaque);
+
+    if (tcet->table) {
+        memory_region_del_subregion(&tcet->root, &tcet->iommu);
+        spapr_tce_free_table(tcet->table, tcet->fd, tcet->nb_table);
+        tcet->table = NULL;
+    }
+
+    return 0;
+}
+
 static int spapr_tce_table_post_load(void *opaque, int version_id)
 {
     sPAPRTCETable *tcet = SPAPR_TCE_TABLE(opaque);
@@ -202,6 +215,7 @@ static const VMStateDescription vmstate_spapr_tce_table = {
     .version_id = 3,
     .minimum_version_id = 2,
     .pre_save = spapr_tce_table_pre_save,
+    .pre_load = spapr_tce_table_pre_load,
     .post_load = spapr_tce_table_post_load,
     .fields      = (VMStateField []) {
         /* Sanity check */
