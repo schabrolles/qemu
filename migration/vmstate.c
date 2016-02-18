@@ -75,6 +75,24 @@ static void *vmstate_base_addr(void *opaque, VMStateField *field, bool alloc)
     return base_addr;
 }
 
+static inline bool object_from_powerkvm211(const VMStateDescription *vmsd,
+                                           const VMStateField *field,
+                                           int version_id)
+{
+    if (version_id == 6 && !strcmp(vmsd->name, "cpu")) {
+        if (!field) {
+            error_report("warning: PowerKVM-2.1.1 compat mode for object "
+                         "'cpu'");
+            return true;
+        } else if (!strcmp(field->name, "env.insns_flags2")) {
+            error_report("warning: PowerKVM-2.1.1 compat mode for field "
+                         "'cpu::env.insns_flags2'");
+            return true;
+        }
+    }
+    return false;
+}
+
 int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
                        void *opaque, int version_id)
 {
@@ -82,7 +100,8 @@ int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
     int ret = 0;
 
     trace_vmstate_load_state(vmsd->name, version_id);
-    if (version_id > vmsd->version_id) {
+    if (version_id > vmsd->version_id &&
+        !object_from_powerkvm211(vmsd, NULL, version_id)) {
         trace_vmstate_load_state_end(vmsd->name, "too new", -EINVAL);
         return -EINVAL;
     }
@@ -128,7 +147,8 @@ int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
                 if (ret >= 0) {
                     ret = qemu_file_get_error(f);
                 }
-                if (ret < 0) {
+                if (ret < 0 &&
+                    !object_from_powerkvm211(vmsd, field, version_id)) {
                     qemu_file_set_error(f, ret);
                     trace_vmstate_load_field_error(field->name, ret);
                     return ret;
