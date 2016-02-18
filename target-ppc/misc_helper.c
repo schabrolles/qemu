@@ -165,3 +165,19 @@ void ppc_store_msr(CPUPPCState *env, target_ulong value)
 {
     hreg_store_msr(env, value, 0);
 }
+
+/*
+ * Hack: we can guess the endianness of virtio devices out of the LPCR_ILE bit
+ * of any CPU. This is used to fix migration of LE guests from PowerKVM 2.1.1
+ * because the following assumptions are true:
+ * - CPU states are restored before virtio devices
+ * - LPCR_ILE has the same value on all CPUs
+ */
+extern bool source_is_powerkvm_211;
+bool virtio_is_little_endian_powerkvm_211(void)
+{
+    PowerPCCPU *cpu = POWERPC_CPU(first_cpu);
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
+
+    return source_is_powerkvm_211 && ! (*pcc->interrupts_big_endian)(cpu);
+}

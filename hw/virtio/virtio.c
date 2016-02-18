@@ -1556,6 +1556,13 @@ int virtio_load(VirtIODevice *vdev, QEMUFile *f, int version_id)
 
     if (vdev->device_endian == VIRTIO_DEVICE_ENDIAN_UNKNOWN) {
         vdev->device_endian = virtio_default_endian();
+#if defined (TARGET_PPC64)
+        if (virtio_is_little_endian_powerkvm_211()) {
+            vdev->device_endian = VIRTIO_DEVICE_ENDIAN_LITTLE;
+            error_report("warning: PowerKVM-2.1.1 compat mode for device "
+                         "%s", vdev->name);
+        }
+#endif
     }
 
     if (virtio_64bit_features_needed(vdev)) {
