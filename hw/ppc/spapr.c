@@ -2436,6 +2436,11 @@ DEFINE_SPAPR_MACHINE(2_5, "2.5", false);
 static void spapr_machine_2_4_instance_options(MachineState *machine)
 {
     spapr_machine_2_5_instance_options(machine);
+    /* The following is needed to accept migration from PowerKVM 3.1. Note
+     * that it breaks migration to upstream QEMU for pseries-2.4.
+     */
+    savevm_skip_section_footers();
+    savevm_skip_configuration();
 }
 
 static void spapr_machine_2_4_class_options(MachineClass *mc)
