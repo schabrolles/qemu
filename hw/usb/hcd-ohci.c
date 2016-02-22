@@ -1332,16 +1332,6 @@ static void ohci_frame_boundary(void *opaque)
  */
 static int ohci_bus_start(OHCIState *ohci)
 {
-    ohci->eof_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
-                    ohci_frame_boundary,
-                    ohci);
-
-    if (ohci->eof_timer == NULL) {
-        trace_usb_ohci_bus_eof_timer_failed(ohci->name);
-        ohci_die(ohci);
-        return 0;
-    }
-
     trace_usb_ohci_start(ohci->name);
 
     ohci_sof(ohci);
@@ -1353,9 +1343,7 @@ static int ohci_bus_start(OHCIState *ohci)
 static void ohci_bus_stop(OHCIState *ohci)
 {
     trace_usb_ohci_stop(ohci->name);
-    if (ohci->eof_timer)
-        timer_del(ohci->eof_timer);
-    ohci->eof_timer = NULL;
+    timer_del(ohci->eof_timer);
 }
 
 /* Sets a flag in a port status register but only set it if the port is
@@ -1878,6 +1866,10 @@ static int usb_ohci_init(OHCIState *ohci, DeviceState *dev,
     usb_packet_init(&ohci->usb_packet);
 
     ohci->async_td = 0;
+
+    ohci->eof_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
+                                   ohci_frame_boundary, ohci);
+
     qemu_register_reset(ohci_reset, ohci);
 
     return 0;
@@ -1978,16 +1970,7 @@ static bool ohci_eof_timer_needed(void *opaque)
 {
     OHCIState *ohci = opaque;
 
-    return ohci->eof_timer != NULL;
-}
-
-static int ohci_eof_timer_pre_load(void *opaque)
-{
-    OHCIState *ohci = opaque;
-
-    ohci_bus_start(ohci);
-
-    return 0;
+    return timer_pending(ohci->eof_timer);
 }
 
 static const VMStateDescription vmstate_ohci_eof_timer = {
@@ -1995,7 +1978,6 @@ static const VMStateDescription vmstate_ohci_eof_timer = {
     .version_id = 1,
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
-    .pre_load = ohci_eof_timer_pre_load,
     .fields = (VMStateField []) {
         VMSTATE_TIMER(eof_timer, OHCIState),
         VMSTATE_END_OF_LIST()
