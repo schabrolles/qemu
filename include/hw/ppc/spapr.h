@@ -550,6 +550,7 @@ struct sPAPRTCETable {
     int fd;
     MemoryRegion root, iommu;
     struct VIOsPAPRDevice *vdev; /* for @bypass migration compatibility only */
+    DeviceState *owner;
     QLIST_ENTRY(sPAPRTCETable) list;
 };
 

@@ -136,6 +136,15 @@ static IOMMUTLBEntry spapr_tce_translate_iommu(MemoryRegion *iommu, hwaddr addr,
     return ret;
 }
 
+static int spapr_tce_vfio_notify(MemoryRegion *iommu, bool attached)
+{
+    sPAPRTCETable *tcet = container_of(iommu, sPAPRTCETable, iommu);
+
+    spapr_tce_set_need_vfio(tcet, attached);
+
+    return 0;
+}
+
 static int spapr_tce_table_post_load(void *opaque, int version_id)
 {
     sPAPRTCETable *tcet = SPAPR_TCE_TABLE(opaque);
@@ -167,6 +176,7 @@ static const VMStateDescription vmstate_spapr_tce_table = {
 
 static MemoryRegionIOMMUOps spapr_iommu_ops = {
     .translate = spapr_tce_translate_iommu,
+    .vfio_notify = spapr_tce_vfio_notify,
 };
 
 static int spapr_tce_table_realize(DeviceState *dev)
@@ -235,6 +245,7 @@ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn)
 
     tcet = SPAPR_TCE_TABLE(object_new(TYPE_SPAPR_TCE_TABLE));
     tcet->liobn = liobn;
+    tcet->owner = owner;
 
     snprintf(tmp, sizeof(tmp), "tce-table-%x", liobn);
     object_property_add_child(OBJECT(owner), tmp, OBJECT(tcet), NULL);

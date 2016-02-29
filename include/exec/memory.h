@@ -150,6 +150,8 @@ typedef struct MemoryRegionIOMMUOps MemoryRegionIOMMUOps;
 struct MemoryRegionIOMMUOps {
     /* Return a TLB entry that contains a given address. */
     IOMMUTLBEntry (*translate)(MemoryRegion *iommu, hwaddr addr, bool is_write);
+    /* Called when VFIO starts/stops using this */
+    int (*vfio_notify)(MemoryRegion *iommu, bool attached);
 };
 
 typedef struct CoalescedMemoryRange CoalescedMemoryRange;
