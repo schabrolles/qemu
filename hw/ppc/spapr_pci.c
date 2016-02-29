@@ -825,6 +825,19 @@ static int spapr_phb_dma_window_enable(sPAPRPHBState *sphb,
     return 0;
 }
 
+static int spapr_phb_dma_window_disable(sPAPRPHBState *sphb, uint32_t liobn)
+{
+    sPAPRTCETable *tcet = spapr_tce_find_by_liobn(liobn);
+
+    if (!tcet) {
+        return -1;
+    }
+
+    spapr_tce_table_disable(tcet);
+
+    return 0;
+}
+
 /* Macros to operate with address in OF binding to PCI */
 #define b_x(x, p, l)    (((x) & ((1<<(l))-1)) << (p))
 #define b_n(x)          b_x((x), 31, 1) /* 0 if relocatable */
@@ -1412,12 +1425,6 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     memory_region_add_subregion(&sphb->iommu_root, 0,
                                 spapr_tce_get_iommu(tcet));
 
-    /* Register default 32bit DMA window */
-    spapr_phb_dma_window_enable(sphb, sphb->dma_liobn,
-                                SPAPR_TCE_PAGE_SHIFT,
-                                sphb->dma_win_addr,
-                                sphb->dma_win_size);
-
     sphb->msi = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, g_free);
 }
 
@@ -1434,6 +1441,16 @@ static int spapr_phb_children_reset(Object *child, void *opaque)
 
 static void spapr_phb_reset(DeviceState *qdev)
 {
+    sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(qdev);
+
+    spapr_phb_dma_window_disable(sphb, sphb->dma_liobn);
+
+    /* Register default 32bit DMA window */
+    spapr_phb_dma_window_enable(sphb, sphb->dma_liobn,
+                                SPAPR_TCE_PAGE_SHIFT,
+                                sphb->dma_win_addr,
+                                sphb->dma_win_size);
+
     /* Reset the IOMMU state */
     object_child_foreach(OBJECT(qdev), spapr_phb_children_reset, NULL);
 

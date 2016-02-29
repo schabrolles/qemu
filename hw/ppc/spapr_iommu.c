@@ -279,7 +279,7 @@ void spapr_tce_table_enable(sPAPRTCETable *tcet,
     spapr_tce_table_do_enable(tcet);
 }
 
-static void spapr_tce_table_disable(sPAPRTCETable *tcet)
+void spapr_tce_table_disable(sPAPRTCETable *tcet)
 {
     if (!tcet->enabled) {
         return;
