@@ -803,6 +803,29 @@ static char *spapr_phb_get_loc_code(sPAPRPHBState *sphb, PCIDevice *pdev)
     return buf;
 }
 
+static int spapr_phb_dma_window_enable(sPAPRPHBState *sphb,
+                                       uint32_t liobn, uint32_t page_shift,
+                                       uint64_t window_addr,
+                                       uint64_t window_size)
+{
+    sPAPRTCETable *tcet;
+    uint32_t nb_table = window_size >> page_shift;
+
+    if (!nb_table) {
+        return -1;
+    }
+
+    tcet = spapr_tce_new_table(DEVICE(sphb), liobn, window_addr,
+                               page_shift, nb_table, false);
+    if (!tcet) {
+        return -1;
+    }
+
+    memory_region_add_subregion(&sphb->iommu_root, tcet->bus_offset,
+                                spapr_tce_get_iommu(tcet));
+    return 0;
+}
+
 /* Macros to operate with address in OF binding to PCI */
 #define b_x(x, p, l)    (((x) & ((1<<(l))-1)) << (p))
 #define b_n(x)          b_x((x), 31, 1) /* 0 if relocatable */
@@ -1228,8 +1251,6 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     int i;
     PCIBus *bus;
     uint64_t msi_window_size = 4096;
-    sPAPRTCETable *tcet;
-    uint32_t nb_table;
 
     if (sphb->index != (uint32_t)-1) {
         hwaddr windows_base;
@@ -1381,18 +1402,11 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         }
     }
 
-    nb_table = sphb->dma_win_size >> SPAPR_TCE_PAGE_SHIFT;
-    tcet = spapr_tce_new_table(DEVICE(sphb), sphb->dma_liobn,
-                               0, SPAPR_TCE_PAGE_SHIFT, nb_table, false);
-    if (!tcet) {
-        error_setg(errp, "Unable to create TCE table for %s",
-                   sphb->dtbusname);
-        return;
-    }
-
     /* Register default 32bit DMA window */
-    memory_region_add_subregion(&sphb->iommu_root, sphb->dma_win_addr,
-                                spapr_tce_get_iommu(tcet));
+    if (spapr_phb_dma_window_enable(sphb, sphb->dma_liobn, SPAPR_TCE_PAGE_SHIFT,
+                                    sphb->dma_win_addr, sphb->dma_win_size)) {
+        error_setg(errp, "Unable to create TCE table for %s", sphb->dtbusname);
+    }
 
     sphb->msi = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, g_free);
 }
