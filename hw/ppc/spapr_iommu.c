@@ -237,7 +237,8 @@ static int spapr_tce_table_realize(DeviceState *dev)
 void spapr_tce_set_need_vfio(sPAPRTCETable *tcet, bool need_vfio)
 {
     size_t table_size = tcet->nb_table * sizeof(uint64_t);
-    void *newtable;
+    uint64_t *oldtable;
+    int newfd = -1;
     bool tcet_can_vfio = tcet->fd < 0;
 
     if (need_vfio == tcet_can_vfio) {
@@ -245,24 +246,18 @@ void spapr_tce_set_need_vfio(sPAPRTCETable *tcet, bool need_vfio)
         return;
     }
 
-    if (!need_vfio) {
-        /* FIXME: We don't support transition back to KVM accelerated
-         * TCEs yet */
-        return;
-    }
+    oldtable = tcet->table;
 
-    if (tcet->fd < 0) {
-        /* Table is already in userspace, nothing to be do */
-        return;
-    }
+    tcet->table = spapr_tce_alloc_table(tcet->liobn,
+                                        tcet->page_shift,
+                                        tcet->nb_table,
+                                        &newfd,
+                                        need_vfio);
+    memcpy(tcet->table, oldtable, table_size);
 
-    newtable = g_malloc(table_size);
-    memcpy(newtable, tcet->table, table_size);
+    kvmppc_remove_spapr_tce(oldtable, tcet->fd, tcet->nb_table);
 
-    kvmppc_remove_spapr_tce(tcet->table, tcet->fd, tcet->nb_table);
-
-    tcet->fd = -1;
-    tcet->table = newtable;
+    tcet->fd = newfd;
 }
 
 sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn)
