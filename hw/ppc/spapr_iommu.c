@@ -153,6 +153,13 @@ static uint64_t spapr_tce_get_page_sizes(MemoryRegion *iommu)
     return 1ULL << tcet->page_shift;
 }
 
+static uint64_t spapr_tce_get_kvm_id(MemoryRegion *iommu)
+{
+    sPAPRTCETable *tcet = container_of(iommu, sPAPRTCETable, iommu);
+
+    return tcet->liobn;
+}
+
 static void spapr_tce_table_pre_save(void *opaque)
 {
     sPAPRTCETable *tcet = SPAPR_TCE_TABLE(opaque);
@@ -212,6 +219,7 @@ static MemoryRegionIOMMUOps spapr_iommu_ops = {
     .translate = spapr_tce_translate_iommu,
     .vfio_notify = spapr_tce_vfio_notify,
     .get_page_sizes = spapr_tce_get_page_sizes,
+    .get_kvm_id = spapr_tce_get_kvm_id,
 };
 
 static int spapr_tce_table_realize(DeviceState *dev)
@@ -240,7 +248,7 @@ void spapr_tce_set_need_vfio(sPAPRTCETable *tcet, bool need_vfio)
     size_t table_size = tcet->nb_table * sizeof(uint64_t);
     uint64_t *oldtable;
     int newfd = -1;
-    bool tcet_can_vfio = tcet->fd < 0;
+    bool tcet_can_vfio = (tcet->fd < 0) || kvmppc_has_cap_spapr_vfio();
 
     if (need_vfio == tcet_can_vfio) {
         /* Nothing to do */

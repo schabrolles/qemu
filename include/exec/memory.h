@@ -154,6 +154,8 @@ struct MemoryRegionIOMMUOps {
     int (*vfio_notify)(MemoryRegion *iommu, bool attached);
     /* Returns supported page sizes */
     uint64_t (*get_page_sizes)(MemoryRegion *iommu);
+    /* Returns an ID for KVM */
+    uint64_t (*get_kvm_id)(MemoryRegion *iommu);
 };
 
 typedef struct CoalescedMemoryRange CoalescedMemoryRange;
