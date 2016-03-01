@@ -1433,10 +1433,8 @@ static int spapr_phb_children_reset(Object *child, void *opaque)
     return 0;
 }
 
-static void spapr_phb_reset(DeviceState *qdev)
+void spapr_phb_dma_reset(sPAPRPHBState *sphb)
 {
-    sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(qdev);
-
     spapr_phb_dma_window_disable(sphb, sphb->dma_liobn);
 
     /* Register default 32bit DMA window */
@@ -1444,6 +1442,13 @@ static void spapr_phb_reset(DeviceState *qdev)
                                 SPAPR_TCE_PAGE_SHIFT,
                                 sphb->dma_win_addr,
                                 sphb->dma_win_size);
+}
+
+static void spapr_phb_reset(DeviceState *qdev)
+{
+    sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(qdev);
+
+    spapr_phb_dma_reset(sphb);
 
     /* Reset the IOMMU state */
     object_child_foreach(OBJECT(qdev), spapr_phb_children_reset, NULL);
