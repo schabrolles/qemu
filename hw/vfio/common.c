@@ -397,6 +397,39 @@ static void vfio_listener_region_add(VFIOMemoryListener *vlistener,
                 section->mr->iommu_ops->get_page_sizes(section->mr);
         QLIST_INSERT_HEAD(&container->giommu_list, giommu, giommu_next);
 
+        if (container->iommu_type == VFIO_SPAPR_TCE_v2_IOMMU) {
+            int ret;
+            struct vfio_iommu_spapr_tce_create create = {
+                .argsz = sizeof(create),
+                .page_shift = ctz64(giommu->iova_pgsizes),
+                .window_size = memory_region_size(section->mr),
+                .levels = 0,
+                .start_addr = 0,
+            };
+
+            /*
+             * Dynamic windows are supported, that means that there is no
+             * pre-created window and we have to create one.
+             */
+            if (!create.levels) {
+                unsigned entries = create.window_size >> create.page_shift;
+                unsigned pages = (entries * sizeof(uint64_t)) / getpagesize();
+                /* 0..64 = 1; 65..4096 = 2; 4097..262144 = 3; 262145.. = 4 */
+                create.levels = ctz64(pow2ceil(pages) - 1) / 6 + 1;
+            }
+            ret = ioctl(container->fd, VFIO_IOMMU_SPAPR_TCE_CREATE, &create);
+            if (ret) {
+                error_report("Failed to create a window");
+            }
+
+            if (create.start_addr != section->offset_within_address_space) {
+                error_report("Something went wrong!");
+            }
+            trace_vfio_spapr_create_window(create.page_shift,
+                                           create.window_size,
+                                           create.start_addr);
+        }
+
         memory_region_register_iommu_notifier(giommu->iommu, &giommu->n);
         if (section->mr->iommu_ops && section->mr->iommu_ops->vfio_notify) {
             section->mr->iommu_ops->vfio_notify(section->mr, true);
@@ -504,6 +537,18 @@ static void vfio_listener_region_del(VFIOMemoryListener *vlistener,
                      container, iova, end - iova, ret);
     }
 
+    if (container->iommu_type == VFIO_SPAPR_TCE_v2_IOMMU) {
+        struct vfio_iommu_spapr_tce_remove remove = {
+            .argsz = sizeof(remove),
+            .start_addr = section->offset_within_address_space,
+        };
+        ret = ioctl(container->fd, VFIO_IOMMU_SPAPR_TCE_REMOVE, &remove);
+        if (ret) {
+            error_report("Failed to remove window");
+        }
+
+        trace_vfio_spapr_remove_window(remove.start_addr);
+    }
     if (iommu && iommu->iommu_ops && iommu->iommu_ops->vfio_notify) {
         iommu->iommu_ops->vfio_notify(section->mr, false);
     }
@@ -796,11 +841,6 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
             }
         }
 
-        /*
-         * This only considers the host IOMMU's 32-bit window.  At
-         * some point we need to add support for the optional 64-bit
-         * window and dynamic windows
-         */
         info.argsz = sizeof(info);
         ret = ioctl(fd, VFIO_IOMMU_SPAPR_TCE_GET_INFO, &info);
         if (ret) {
@@ -809,7 +849,25 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
             goto free_container_exit;
         }
         container->min_iova = info.dma32_window_start;
-        container->max_iova = container->min_iova + info.dma32_window_size - 1;
+        container->max_iova = (hwaddr)-1;
+
+        if (v2) {
+            /*
+             * There is a default window in just created container.
+             * To make region_add/del happy, we better remove this window now
+             * and let those iommu_listener callbacks create them when needed.
+             */
+            struct vfio_iommu_spapr_tce_remove remove = {
+                .argsz = sizeof(remove),
+                .start_addr = info.dma32_window_start,
+            };
+            ret = ioctl(fd, VFIO_IOMMU_SPAPR_TCE_REMOVE, &remove);
+            if (ret) {
+                error_report("vfio: VFIO_IOMMU_SPAPR_TCE_REMOVE failed: %m");
+                ret = -errno;
+                goto free_container_exit;
+            }
+        }
     } else {
         error_report("vfio: No available IOMMU models");
         ret = -EINVAL;
