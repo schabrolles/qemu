@@ -313,9 +313,9 @@ out:
     rcu_read_unlock();
 }
 
-static hwaddr vfio_container_granularity(VFIOContainer *container)
+static hwaddr vfio_container_granularity(VFIOGuestIOMMU *giommu)
 {
-    return (hwaddr)1 << ctz64(container->iova_pgsizes);
+    return (hwaddr)1 << ctz64(giommu->iova_pgsizes);
 }
 
 static hwaddr vfio_iommu_page_mask(MemoryRegion *mr)
@@ -392,6 +392,9 @@ static void vfio_listener_region_add(VFIOMemoryListener *vlistener,
             section->offset_within_address_space;
         giommu->container = container;
         giommu->n.notify = vfio_iommu_map_notify;
+        g_assert(section->mr->iommu_ops);
+        giommu->iova_pgsizes =
+                section->mr->iommu_ops->get_page_sizes(section->mr);
         QLIST_INSERT_HEAD(&container->giommu_list, giommu, giommu_next);
 
         memory_region_register_iommu_notifier(giommu->iommu, &giommu->n);
@@ -399,7 +402,7 @@ static void vfio_listener_region_add(VFIOMemoryListener *vlistener,
             section->mr->iommu_ops->vfio_notify(section->mr, true);
         }
         memory_region_iommu_replay(giommu->iommu, &giommu->n,
-                                   vfio_container_granularity(container),
+                                   vfio_container_granularity(giommu),
                                    false);
 
         return;
@@ -745,14 +748,8 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
         container->min_iova = 0;
         container->max_iova = (hwaddr)-1;
 
-        /* Assume just 4K IOVA page size */
-        container->iova_pgsizes = 0x1000;
         info.argsz = sizeof(info);
         ret = ioctl(fd, VFIO_IOMMU_GET_INFO, &info);
-        /* Ignore errors */
-        if ((ret == 0) && (info.flags & VFIO_IOMMU_INFO_PGSIZES)) {
-            container->iova_pgsizes = info.iova_pgsizes;
-        }
     } else if (ioctl(fd, VFIO_CHECK_EXTENSION, VFIO_SPAPR_TCE_IOMMU) ||
                ioctl(fd, VFIO_CHECK_EXTENSION, VFIO_SPAPR_TCE_v2_IOMMU)) {
         struct vfio_iommu_spapr_tce_info info;
@@ -813,9 +810,6 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
         }
         container->min_iova = info.dma32_window_start;
         container->max_iova = container->min_iova + info.dma32_window_size - 1;
-
-        /* Assume just 4K IOVA pages for now */
-        container->iova_pgsizes = 0x1000;
     } else {
         error_report("vfio: No available IOMMU models");
         ret = -EINVAL;

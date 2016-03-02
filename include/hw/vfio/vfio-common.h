@@ -80,7 +80,6 @@ typedef struct VFIOContainer {
      * future
      */
     hwaddr min_iova, max_iova;
-    uint64_t iova_pgsizes;
     QLIST_HEAD(, VFIOGuestIOMMU) giommu_list;
     QLIST_HEAD(, VFIOGroup) group_list;
     QLIST_ENTRY(VFIOContainer) next;
@@ -90,6 +89,7 @@ typedef struct VFIOGuestIOMMU {
     VFIOContainer *container;
     MemoryRegion *iommu;
     hwaddr offset_within_address_space;
+    uint64_t iova_pgsizes;
     Notifier n;
     QLIST_ENTRY(VFIOGuestIOMMU) giommu_next;
 } VFIOGuestIOMMU;
