@@ -959,47 +959,86 @@ void vfio_put_base_device(VFIODevice *vbasedev)
     close(vbasedev->fd);
 }
 
-static int vfio_container_do_ioctl(AddressSpace *as, int32_t groupid,
-                                   int req, void *param)
+/*
+ * Interfaces for IBM EEH (Enhanced Error Handling)
+ */
+static bool vfio_eeh_container_ok(VFIOContainer *container)
 {
-    VFIOGroup *group;
-    VFIOContainer *container;
-    int ret = -1;
+    /* A broken kernel implementation means EEH operations won't work
+     * correctly if there are multiple groups in a container.  So
+     * return true only if there is exactly one group attached to the
+     * container */
 
-    group = vfio_get_group(groupid, as);
-    if (!group) {
-        error_report("vfio: group %d not registered", groupid);
-        return ret;
+    if (QLIST_EMPTY(&container->group_list)) {
+        return false;
     }
 
-    container = group->container;
-    if (group->container) {
-        ret = ioctl(container->fd, req, param);
-        if (ret < 0) {
-            error_report("vfio: failed to ioctl %d to container: ret=%d, %s",
-                         _IOC_NR(req) - VFIO_BASE, ret, strerror(errno));
-        }
+    if (QLIST_NEXT(QLIST_FIRST(&container->group_list), container_next)) {
+        return false;
     }
 
-    vfio_put_group(group);
-
-    return ret;
+    return true;
 }
 
-int vfio_container_ioctl(AddressSpace *as, int32_t groupid,
-                         int req, void *param)
+static int vfio_eeh_container_op(VFIOContainer *container, uint32_t op)
 {
-    /* We allow only certain ioctls to the container */
-    switch (req) {
-    case VFIO_CHECK_EXTENSION:
-    case VFIO_IOMMU_SPAPR_TCE_GET_INFO:
-    case VFIO_EEH_PE_OP:
-        break;
-    default:
-        /* Return an error on unknown requests */
-        error_report("vfio: unsupported ioctl %X", req);
-        return -1;
+    struct vfio_eeh_pe_op pe_op = {
+        .argsz = sizeof(pe_op),
+        .op = op,
+    };
+    int ret;
+
+    if (!vfio_eeh_container_ok(container)) {
+        error_report("vfio/eeh: EEH_PE_OP 0x%x called on container"
+                     " with multiple groups", op);
+        return -EPERM;
     }
 
-    return vfio_container_do_ioctl(as, groupid, req, param);
+    ret = ioctl(container->fd, VFIO_EEH_PE_OP, &pe_op);
+    if (ret < 0) {
+        error_report("vfio/eeh: EEH_PE_OP 0x%x failed: %m", op);
+        return -errno;
+    }
+
+    return 0;
+}
+
+static VFIOContainer *vfio_eeh_as_container(AddressSpace *as)
+{
+    VFIOAddressSpace *space = vfio_get_address_space(as);
+    VFIOContainer *container = NULL;
+
+    if (QLIST_EMPTY(&space->containers)) {
+        /* No containers to act on */
+        goto out;
+    }
+
+    container = QLIST_FIRST(&space->containers);
+
+    if (QLIST_NEXT(container, next)) {
+        /* We don't yet have logic to synchronize EEH state across
+         * multiple containers */
+        container = NULL;
+        goto out;
+    }
+
+out:
+    vfio_put_address_space(space);
+    return container;
+}
+
+bool vfio_eeh_as_ok(AddressSpace *as)
+{
+    VFIOContainer *container = vfio_eeh_as_container(as);
+
+    return (container != NULL) && vfio_eeh_container_ok(container);
+}
+
+int vfio_eeh_as_op(AddressSpace *as, uint32_t op)
+{
+    VFIOContainer *container = vfio_eeh_as_container(as);
+
+    /* Shouldn't be called unless vfio_eeh_as_ok() returned true */
+    assert(container);
+    return vfio_eeh_container_op(container, op);
 }
