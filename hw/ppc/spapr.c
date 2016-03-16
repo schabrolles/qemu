@@ -2445,10 +2445,7 @@ static void spapr_machine_2_4_instance_options(MachineState *machine)
 
 static void spapr_machine_2_4_class_options(MachineClass *mc)
 {
-    sPAPRMachineClass *smc = SPAPR_MACHINE_CLASS(mc);
-
     spapr_machine_2_5_class_options(mc);
-    smc->dr_lmb_enabled = false;
     SET_MACHINE_COMPAT(mc, SPAPR_COMPAT_2_4);
 }
 
@@ -2468,7 +2465,10 @@ DEFINE_SPAPR_MACHINE(2_4, "2.4", false);
 
 static void spapr_machine_2_3_instance_options(MachineState *machine)
 {
+    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(machine);
+
     spapr_machine_2_4_instance_options(machine);
+    smc->dr_lmb_enabled = false;
     savevm_skip_section_footers();
     global_state_set_optional();
     savevm_skip_configuration();
