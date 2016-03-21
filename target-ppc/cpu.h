@@ -2331,4 +2331,5 @@ PowerPCCPU *ppc_get_vcpu_by_dt_id(int cpu_dt_id);
 
 bool virtio_is_little_endian_powerkvm_211(void);
 
+void ppc_maybe_bswap_register(CPUPPCState *env, uint8_t *mem_buf, int len);
 #endif /* !defined (__CPU_PPC_H__) */
