@@ -42,6 +42,7 @@ void *kvmppc_create_spapr_tce(uint32_t liobn, uint32_t page_shift,
 int kvmppc_remove_spapr_tce(void *table, int pfd, uint32_t window_size);
 int kvmppc_reset_htab(int shift_hint);
 uint64_t kvmppc_rma_size(uint64_t current_size, unsigned int hash_shift);
+bool kvmppc_has_cap_spapr_vfio(void);
 #endif /* !CONFIG_USER_ONLY */
 bool kvmppc_has_cap_epr(void);
 int kvmppc_define_rtas_kernel_token(uint32_t token, const char *function);
@@ -56,7 +57,6 @@ void kvmppc_hash64_free_pteg(uint64_t token);
 void kvmppc_hash64_write_pte(CPUPPCState *env, target_ulong pte_index,
                              target_ulong pte0, target_ulong pte1);
 bool kvmppc_has_cap_fixup_hcalls(void);
-bool kvmppc_has_cap_spapr_vfio(void);
 int kvmppc_enable_hwrng(void);
 
 #else
@@ -193,6 +193,11 @@ static inline uint64_t kvmppc_rma_size(uint64_t current_size,
     return ram_size;
 }
 
+bool inline bool kvmppc_has_cap_spapr_vfio(void)
+{
+    return false;
+}
+
 #endif /* !CONFIG_USER_ONLY */
 
 static inline bool kvmppc_has_cap_epr(void)
@@ -249,11 +254,6 @@ static inline void kvmppc_hash64_write_pte(CPUPPCState *env,
 static inline bool kvmppc_has_cap_fixup_hcalls(void)
 {
     abort();
-}
-
-bool inline bool kvmppc_has_cap_spapr_vfio(void)
-{
-    return false;
 }
 
 static inline int kvmppc_enable_hwrng(void)

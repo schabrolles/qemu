@@ -173,7 +173,11 @@ void ppc_store_msr(CPUPPCState *env, target_ulong value)
  * - CPU states are restored before virtio devices
  * - LPCR_ILE has the same value on all CPUs
  */
+#if !defined(CONFIG_USER_ONLY)
 extern bool source_is_powerkvm_211;
+#else
+#define source_is_powerkvm_211 (true)
+#endif
 bool virtio_is_little_endian_powerkvm_211(void)
 {
     PowerPCCPU *cpu = POWERPC_CPU(first_cpu);
