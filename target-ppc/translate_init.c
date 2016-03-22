@@ -8755,14 +8755,25 @@ static void dump_ppc_insns (CPUPPCState *env)
 }
 #endif
 
+static bool avr_need_swap(CPUPPCState *env)
+{
+#ifdef HOST_WORDS_BIGENDIAN
+    return msr_le;
+#else
+    return !msr_le;
+#endif
+}
+
 static int gdb_get_float_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
 {
     if (n < 32) {
         stfq_p(mem_buf, env->fpr[n]);
+        ppc_maybe_bswap_register(env, mem_buf, 8);
         return 8;
     }
     if (n == 32) {
         stl_p(mem_buf, env->fpscr);
+        ppc_maybe_bswap_register(env, mem_buf, 4);
         return 4;
     }
     return 0;
@@ -8771,10 +8782,12 @@ static int gdb_get_float_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
 static int gdb_set_float_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
 {
     if (n < 32) {
+        ppc_maybe_bswap_register(env, mem_buf, 8);
         env->fpr[n] = ldfq_p(mem_buf);
         return 8;
     }
     if (n == 32) {
+        ppc_maybe_bswap_register(env, mem_buf, 4);
         helper_store_fpscr(env, ldl_p(mem_buf), 0xffffffff);
         return 4;
     }
@@ -8784,21 +8797,25 @@ static int gdb_set_float_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
 static int gdb_get_avr_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
 {
     if (n < 32) {
-#ifdef HOST_WORDS_BIGENDIAN
-        stq_p(mem_buf, env->avr[n].u64[0]);
-        stq_p(mem_buf+8, env->avr[n].u64[1]);
-#else
-        stq_p(mem_buf, env->avr[n].u64[1]);
-        stq_p(mem_buf+8, env->avr[n].u64[0]);
-#endif
+        if (!avr_need_swap(env)) {
+            stq_p(mem_buf, env->avr[n].u64[0]);
+            stq_p(mem_buf+8, env->avr[n].u64[1]);
+        } else {
+            stq_p(mem_buf, env->avr[n].u64[1]);
+            stq_p(mem_buf+8, env->avr[n].u64[0]);
+        }
+        ppc_maybe_bswap_register(env, mem_buf, 8);
+        ppc_maybe_bswap_register(env, mem_buf + 8, 8);
         return 16;
     }
     if (n == 32) {
         stl_p(mem_buf, env->vscr);
+        ppc_maybe_bswap_register(env, mem_buf, 4);
         return 4;
     }
     if (n == 33) {
         stl_p(mem_buf, (uint32_t)env->spr[SPR_VRSAVE]);
+        ppc_maybe_bswap_register(env, mem_buf, 4);
         return 4;
     }
     return 0;
@@ -8807,20 +8824,24 @@ static int gdb_get_avr_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
 static int gdb_set_avr_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
 {
     if (n < 32) {
-#ifdef HOST_WORDS_BIGENDIAN
-        env->avr[n].u64[0] = ldq_p(mem_buf);
-        env->avr[n].u64[1] = ldq_p(mem_buf+8);
-#else
-        env->avr[n].u64[1] = ldq_p(mem_buf);
-        env->avr[n].u64[0] = ldq_p(mem_buf+8);
-#endif
+        ppc_maybe_bswap_register(env, mem_buf, 8);
+        ppc_maybe_bswap_register(env, mem_buf + 8, 8);
+        if (!avr_need_swap(env)) {
+            env->avr[n].u64[0] = ldq_p(mem_buf);
+            env->avr[n].u64[1] = ldq_p(mem_buf+8);
+        } else {
+            env->avr[n].u64[1] = ldq_p(mem_buf);
+            env->avr[n].u64[0] = ldq_p(mem_buf+8);
+        }
         return 16;
     }
     if (n == 32) {
+        ppc_maybe_bswap_register(env, mem_buf, 4);
         env->vscr = ldl_p(mem_buf);
         return 4;
     }
     if (n == 33) {
+        ppc_maybe_bswap_register(env, mem_buf, 4);
         env->spr[SPR_VRSAVE] = (target_ulong)ldl_p(mem_buf);
         return 4;
     }
@@ -8832,6 +8853,7 @@ static int gdb_get_spe_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
     if (n < 32) {
 #if defined(TARGET_PPC64)
         stl_p(mem_buf, env->gpr[n] >> 32);
+        ppc_maybe_bswap_register(env, mem_buf, 4);
 #else
         stl_p(mem_buf, env->gprh[n]);
 #endif
@@ -8839,10 +8861,12 @@ static int gdb_get_spe_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
     }
     if (n == 32) {
         stq_p(mem_buf, env->spe_acc);
+        ppc_maybe_bswap_register(env, mem_buf, 8);
         return 8;
     }
     if (n == 33) {
         stl_p(mem_buf, env->spe_fscr);
+        ppc_maybe_bswap_register(env, mem_buf, 4);
         return 4;
     }
     return 0;
@@ -8853,7 +8877,11 @@ static int gdb_set_spe_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
     if (n < 32) {
 #if defined(TARGET_PPC64)
         target_ulong lo = (uint32_t)env->gpr[n];
-        target_ulong hi = (target_ulong)ldl_p(mem_buf) << 32;
+        target_ulong hi;
+
+        ppc_maybe_bswap_register(env, mem_buf, 4);
+
+        hi = (target_ulong)ldl_p(mem_buf) << 32;
         env->gpr[n] = lo | hi;
 #else
         env->gprh[n] = ldl_p(mem_buf);
@@ -8861,12 +8889,34 @@ static int gdb_set_spe_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
         return 4;
     }
     if (n == 32) {
+        ppc_maybe_bswap_register(env, mem_buf, 8);
         env->spe_acc = ldq_p(mem_buf);
         return 8;
     }
     if (n == 33) {
+        ppc_maybe_bswap_register(env, mem_buf, 4);
         env->spe_fscr = ldl_p(mem_buf);
         return 4;
+    }
+    return 0;
+}
+
+static int gdb_get_vsx_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
+{
+    if (n < 32) {
+        stq_p(mem_buf, env->vsr[n]);
+        ppc_maybe_bswap_register(env, mem_buf, 8);
+        return 8;
+    }
+    return 0;
+}
+
+static int gdb_set_vsx_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
+{
+    if (n < 32) {
+        ppc_maybe_bswap_register(env, mem_buf, 8);
+        env->vsr[n] = ldq_p(mem_buf);
+        return 8;
     }
     return 0;
 }
@@ -8972,6 +9022,10 @@ static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
     if (pcc->insns_flags & PPC_SPE) {
         gdb_register_coprocessor(cs, gdb_get_spe_reg, gdb_set_spe_reg,
                                  34, "power-spe.xml", 0);
+    }
+    if (pcc->insns_flags2 & PPC2_VSX) {
+        gdb_register_coprocessor(cs, gdb_get_vsx_reg, gdb_set_vsx_reg,
+                                 32, "power-vsx.xml", 0);
     }
 
     qemu_init_vcpu(cs);
