@@ -1244,10 +1244,20 @@ int vfio_get_region_info(VFIODevice *vbasedev, int index,
  */
 static bool vfio_eeh_container_ok(VFIOContainer *container)
 {
-    /* A broken kernel implementation means EEH operations won't work
-     * correctly if there are multiple groups in a container.  So
-     * return true only if there is exactly one group attached to the
-     * container */
+    /*
+     * As of 2016-03-04 (linux-4.5) the host kernel EEH/VFIO
+     * implementation is broken if there are multiple groups in a
+     * container.  The hardware works in units of Partitionable
+     * Endpoints (== IOMMU groups) and the EEH operations naively
+     * iterate across all groups in the container, without any logic
+     * to make sure the groups have their state synchronized.  For
+     * certain operations (ENABLE) that might be ok, until an error
+     * occurs, but for others (GET_STATE) it's clearly broken.
+     */
+
+    /*
+     * XXX Once fixed kernels exist, test for them here
+     */
 
     if (QLIST_EMPTY(&container->group_list)) {
         return false;
@@ -1269,8 +1279,8 @@ static int vfio_eeh_container_op(VFIOContainer *container, uint32_t op)
     int ret;
 
     if (!vfio_eeh_container_ok(container)) {
-        error_report("vfio/eeh: EEH_PE_OP 0x%x called on container"
-                     " with multiple groups", op);
+        error_report("vfio/eeh: EEH_PE_OP 0x%x: "
+                     "kernel requires a container with exactly one group", op);
         return -EPERM;
     }
 

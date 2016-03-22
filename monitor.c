@@ -42,6 +42,7 @@
 #include "ui/console.h"
 #include "ui/input.h"
 #include "sysemu/blockdev.h"
+#include "sysemu/block-backend.h"
 #include "audio/audio.h"
 #include "disas/disas.h"
 #include "sysemu/balloon.h"
@@ -76,6 +77,7 @@
 #include "qapi-event.h"
 #include "qmp-introspect.h"
 #include "sysemu/block-backend.h"
+#include "sysemu/qtest.h"
 
 /* for hmp_info_irq/pic */
 #if defined(TARGET_SPARC)
@@ -231,6 +233,8 @@ static mon_cmd_t info_cmds[];
 static const mon_cmd_t qmp_cmds[];
 
 Monitor *cur_mon;
+
+static QEMUClockType event_clock_type = QEMU_CLOCK_REALTIME;
 
 static void monitor_command_cb(void *opaque, const char *cmdline,
                                void *readline_opaque);
@@ -513,7 +517,7 @@ monitor_qapi_event_queue(QAPIEvent event, QDict *qdict, Error **errp)
              * monitor_qapi_event_handler() in evconf->rate ns.  Any
              * events arriving before then will be delayed until then.
              */
-            int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+            int64_t now = qemu_clock_get_ns(event_clock_type);
 
             monitor_qapi_event_emit(event, qdict);
 
@@ -522,7 +526,7 @@ monitor_qapi_event_queue(QAPIEvent event, QDict *qdict, Error **errp)
             evstate->data = data;
             QINCREF(evstate->data);
             evstate->qdict = NULL;
-            evstate->timer = timer_new_ns(QEMU_CLOCK_REALTIME,
+            evstate->timer = timer_new_ns(event_clock_type,
                                           monitor_qapi_event_handler,
                                           evstate);
             g_hash_table_add(monitor_qapi_event_state, evstate);
@@ -547,7 +551,7 @@ static void monitor_qapi_event_handler(void *opaque)
     qemu_mutex_lock(&monitor_lock);
 
     if (evstate->qdict) {
-        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+        int64_t now = qemu_clock_get_ns(event_clock_type);
 
         monitor_qapi_event_emit(evstate->event, evstate->qdict);
         QDECREF(evstate->qdict);
@@ -572,6 +576,10 @@ static unsigned int qapi_event_throttle_hash(const void *key)
         hash += g_str_hash(qdict_get_str(evstate->data, "id"));
     }
 
+    if (evstate->event == QAPI_EVENT_QUORUM_REPORT_BAD) {
+        hash += g_str_hash(qdict_get_str(evstate->data, "node-name"));
+    }
+
     return hash;
 }
 
@@ -589,11 +597,20 @@ static gboolean qapi_event_throttle_equal(const void *a, const void *b)
                        qdict_get_str(evb->data, "id"));
     }
 
+    if (eva->event == QAPI_EVENT_QUORUM_REPORT_BAD) {
+        return !strcmp(qdict_get_str(eva->data, "node-name"),
+                       qdict_get_str(evb->data, "node-name"));
+    }
+
     return TRUE;
 }
 
 static void monitor_qapi_event_init(void)
 {
+    if (qtest_enabled()) {
+        event_clock_type = QEMU_CLOCK_VIRTUAL;
+    }
+
     monitor_qapi_event_state = g_hash_table_new(qapi_event_throttle_hash,
                                                 qapi_event_throttle_equal);
     qmp_event_set_func_emit(monitor_qapi_event_queue);
@@ -3467,7 +3484,7 @@ static void monitor_find_completion_by_table(Monitor *mon,
     int i;
     const char *ptype, *str, *name;
     const mon_cmd_t *cmd;
-    BlockDriverState *bs;
+    BlockBackend *blk = NULL;
 
     if (nb_args <= 1) {
         /* command completion */
@@ -3522,8 +3539,8 @@ static void monitor_find_completion_by_table(Monitor *mon,
         case 'B':
             /* block device name completion */
             readline_set_completion_index(mon->rs, strlen(str));
-            for (bs = bdrv_next(NULL); bs; bs = bdrv_next(bs)) {
-                name = bdrv_get_device_name(bs);
+            while ((blk = blk_next(blk)) != NULL) {
+                name = blk_name(blk);
                 if (str[0] == '\0' ||
                     !strncmp(name, str, strlen(str))) {
                     readline_add_completion(mon->rs, name);

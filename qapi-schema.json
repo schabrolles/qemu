@@ -753,9 +753,9 @@
   'data': ['x86', 'sparc', 'ppc', 'mips', 'tricore', 'other' ] }
 
 ##
-# @CpuInfoBase:
+# @CpuInfo:
 #
-# Common information about a virtual CPU
+# Information about a virtual CPU
 #
 # @CPU: the index of the virtual CPU
 #
@@ -776,18 +776,10 @@
 # Notes: @halted is a transient state that changes frequently.  By the time the
 #        data is sent to the client, the guest may no longer be halted.
 ##
-{ 'struct': 'CpuInfoBase',
-  'data': {'CPU': 'int', 'current': 'bool', 'halted': 'bool',
-           'qom_path': 'str', 'thread_id': 'int', 'arch': 'CpuInfoArch' } }
-
-##
-# @CpuInfo:
-#
-# Information about a virtual CPU
-#
-# Since: 0.14.0
-##
-{ 'union': 'CpuInfo', 'base': 'CpuInfoBase', 'discriminator': 'arch',
+{ 'union': 'CpuInfo',
+  'base': {'CPU': 'int', 'current': 'bool', 'halted': 'bool',
+           'qom_path': 'str', 'thread_id': 'int', 'arch': 'CpuInfoArch' },
+  'discriminator': 'arch',
   'data': { 'x86': 'CpuInfoX86',
             'sparc': 'CpuInfoSPARC',
             'ppc': 'CpuInfoPPC',
@@ -2451,6 +2443,14 @@
 # @dnssearch: #optional list of DNS suffixes to search, passed as DHCP option
 #             to the guest
 #
+# @ip6-prefix: #optional IPv6 network prefix (default is fec0::) (since 2.6)
+#
+# @ip6-prefixlen: #optional IPv6 network prefix length (default is 64) (since 2.6)
+#
+# @ip6-host: #optional guest-visible IPv6 address of the host (since 2.6)
+#
+# @ip6-dns: #optional guest-visible IPv6 address of the virtual nameserver (since 2.6)
+#
 # @smb: #optional root directory of the built-in SMB server
 #
 # @smbserver: #optional IP address of the built-in SMB server
@@ -2474,6 +2474,10 @@
     '*dhcpstart': 'str',
     '*dns':       'str',
     '*dnssearch': ['String'],
+    '*ip6-prefix':      'str',
+    '*ip6-prefixlen':   'int',
+    '*ip6-host':        'str',
+    '*ip6-dns':         'str',
     '*smb':       'str',
     '*smbserver': 'str',
     '*hostfwd':   ['String'],

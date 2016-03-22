@@ -893,7 +893,7 @@ static int net_init_nic(const NetClientOptions *opts, const char *name,
     const NetLegacyNicOptions *nic;
 
     assert(opts->type == NET_CLIENT_OPTIONS_KIND_NIC);
-    nic = opts->u.nic;
+    nic = opts->u.nic.data;
 
     idx = nic_get_free_idx();
     if (idx == -1 || nb_nics >= MAX_NICS) {
@@ -1025,7 +1025,7 @@ static int net_client_init1(const void *object, int is_netdev, Error **errp)
 
         /* Do not add to a vlan if it's a nic with a netdev= parameter. */
         if (opts->type != NET_CLIENT_OPTIONS_KIND_NIC ||
-            !opts->u.nic->has_netdev) {
+            !opts->u.nic.data->has_netdev) {
             peer = net_hub_add_port(net->has_vlan ? net->vlan : 0, NULL);
         }
     }
@@ -1049,6 +1049,37 @@ int net_client_init(QemuOpts *opts, int is_netdev, Error **errp)
     int ret = -1;
     OptsVisitor *ov = opts_visitor_new(opts);
     Visitor *v = opts_get_visitor(ov);
+
+    {
+        /* Parse convenience option format ip6-net=fec0::0[/64] */
+        const char *ip6_net = qemu_opt_get(opts, "ip6-net");
+
+        if (ip6_net) {
+            char buf[strlen(ip6_net) + 1];
+
+            if (get_str_sep(buf, sizeof(buf), &ip6_net, '/') < 0) {
+                /* Default 64bit prefix length.  */
+                qemu_opt_set(opts, "ip6-prefix", ip6_net, &error_abort);
+                qemu_opt_set_number(opts, "ip6-prefixlen", 64, &error_abort);
+            } else {
+                /* User-specified prefix length.  */
+                unsigned long len;
+                int err;
+
+                qemu_opt_set(opts, "ip6-prefix", buf, &error_abort);
+                err = qemu_strtoul(ip6_net, NULL, 10, &len);
+
+                if (err) {
+                    error_setg(errp, QERR_INVALID_PARAMETER_VALUE,
+                              "ip6-prefix", "a number");
+                } else {
+                    qemu_opt_set_number(opts, "ip6-prefixlen", len,
+                                        &error_abort);
+                }
+            }
+            qemu_opt_unset(opts, "ip6-net");
+        }
+    }
 
     if (is_netdev) {
         visit_type_Netdev(v, NULL, (Netdev **)&object, &err);

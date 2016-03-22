@@ -24,6 +24,7 @@
 #include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "block/block_int.h"
+#include "sysemu/block-backend.h"
 #include "qemu/module.h"
 #include <zlib.h>
 #include "block/qcow2.h"
@@ -197,22 +198,8 @@ static void cleanup_unknown_header_ext(BlockDriverState *bs)
     }
 }
 
-static void GCC_FMT_ATTR(3, 4) report_unsupported(BlockDriverState *bs,
-    Error **errp, const char *fmt, ...)
-{
-    char msg[64];
-    va_list ap;
-
-    va_start(ap, fmt);
-    vsnprintf(msg, sizeof(msg), fmt, ap);
-    va_end(ap);
-
-    error_setg(errp, QERR_UNKNOWN_BLOCK_FORMAT_FEATURE,
-               bdrv_get_device_or_node_name(bs), "qcow2", msg);
-}
-
-static void report_unsupported_feature(BlockDriverState *bs,
-    Error **errp, Qcow2Feature *table, uint64_t mask)
+static void report_unsupported_feature(Error **errp, Qcow2Feature *table,
+                                       uint64_t mask)
 {
     char *features = g_strdup("");
     char *old;
@@ -237,7 +224,7 @@ static void report_unsupported_feature(BlockDriverState *bs,
         g_free(old);
     }
 
-    report_unsupported(bs, errp, "%s", features);
+    error_setg(errp, "Unsupported qcow2 feature(s): %s", features);
     g_free(features);
 }
 
@@ -854,7 +841,7 @@ static int qcow2_open(BlockDriverState *bs, QDict *options, int flags,
         goto fail;
     }
     if (header.version < 2 || header.version > 3) {
-        report_unsupported(bs, errp, "QCOW version %" PRIu32, header.version);
+        error_setg(errp, "Unsupported qcow2 version %" PRIu32, header.version);
         ret = -ENOTSUP;
         goto fail;
     }
@@ -934,7 +921,7 @@ static int qcow2_open(BlockDriverState *bs, QDict *options, int flags,
         void *feature_table = NULL;
         qcow2_read_extensions(bs, header.header_length, ext_end,
                               &feature_table, NULL);
-        report_unsupported_feature(bs, errp, feature_table,
+        report_unsupported_feature(errp, feature_table,
                                    s->incompatible_features &
                                    ~QCOW2_INCOMPAT_MASK);
         ret = -ENOTSUP;
@@ -2097,7 +2084,7 @@ static int qcow2_create2(const char *filename, int64_t total_size,
      * 2 GB for 64k clusters, and we don't want to have a 2 GB initial file
      * size for any qcow2 image.
      */
-    BlockDriverState* bs;
+    BlockBackend *blk;
     QCowHeader *header;
     uint64_t* refcount_table;
     Error *local_err = NULL;
@@ -2172,13 +2159,15 @@ static int qcow2_create2(const char *filename, int64_t total_size,
         return ret;
     }
 
-    bs = NULL;
-    ret = bdrv_open(&bs, filename, NULL, NULL, BDRV_O_RDWR | BDRV_O_PROTOCOL,
-                    &local_err);
-    if (ret < 0) {
+    blk = blk_new_open(filename, NULL, NULL,
+                       BDRV_O_RDWR | BDRV_O_CACHE_WB | BDRV_O_PROTOCOL,
+                       &local_err);
+    if (blk == NULL) {
         error_propagate(errp, local_err);
-        return ret;
+        return -EIO;
     }
+
+    blk_set_allow_write_beyond_eof(blk, true);
 
     /* Write the header */
     QEMU_BUILD_BUG_ON((1 << MIN_CLUSTER_BITS) < sizeof(*header));
@@ -2207,7 +2196,7 @@ static int qcow2_create2(const char *filename, int64_t total_size,
             cpu_to_be64(QCOW2_COMPAT_LAZY_REFCOUNTS);
     }
 
-    ret = bdrv_pwrite(bs, 0, header, cluster_size);
+    ret = blk_pwrite(blk, 0, header, cluster_size);
     g_free(header);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Could not write qcow2 header");
@@ -2217,7 +2206,7 @@ static int qcow2_create2(const char *filename, int64_t total_size,
     /* Write a refcount table with one refcount block */
     refcount_table = g_malloc0(2 * cluster_size);
     refcount_table[0] = cpu_to_be64(2 * cluster_size);
-    ret = bdrv_pwrite(bs, cluster_size, refcount_table, 2 * cluster_size);
+    ret = blk_pwrite(blk, cluster_size, refcount_table, 2 * cluster_size);
     g_free(refcount_table);
 
     if (ret < 0) {
@@ -2225,8 +2214,8 @@ static int qcow2_create2(const char *filename, int64_t total_size,
         goto out;
     }
 
-    bdrv_unref(bs);
-    bs = NULL;
+    blk_unref(blk);
+    blk = NULL;
 
     /*
      * And now open the image and make it consistent first (i.e. increase the
@@ -2235,15 +2224,16 @@ static int qcow2_create2(const char *filename, int64_t total_size,
      */
     options = qdict_new();
     qdict_put(options, "driver", qstring_from_str("qcow2"));
-    ret = bdrv_open(&bs, filename, NULL, options,
-                    BDRV_O_RDWR | BDRV_O_CACHE_WB | BDRV_O_NO_FLUSH,
-                    &local_err);
-    if (ret < 0) {
+    blk = blk_new_open(filename, NULL, options,
+                       BDRV_O_RDWR | BDRV_O_CACHE_WB | BDRV_O_NO_FLUSH,
+                       &local_err);
+    if (blk == NULL) {
         error_propagate(errp, local_err);
+        ret = -EIO;
         goto out;
     }
 
-    ret = qcow2_alloc_clusters(bs, 3 * cluster_size);
+    ret = qcow2_alloc_clusters(blk_bs(blk), 3 * cluster_size);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Could not allocate clusters for qcow2 "
                          "header and refcount table");
@@ -2255,14 +2245,14 @@ static int qcow2_create2(const char *filename, int64_t total_size,
     }
 
     /* Create a full header (including things like feature table) */
-    ret = qcow2_update_header(bs);
+    ret = qcow2_update_header(blk_bs(blk));
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Could not update qcow2 header");
         goto out;
     }
 
     /* Okay, now that we have a valid image, let's give it the right size */
-    ret = bdrv_truncate(bs, total_size);
+    ret = blk_truncate(blk, total_size);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Could not resize image");
         goto out;
@@ -2270,7 +2260,7 @@ static int qcow2_create2(const char *filename, int64_t total_size,
 
     /* Want a backing file? There you go.*/
     if (backing_file) {
-        ret = bdrv_change_backing_file(bs, backing_file, backing_format);
+        ret = bdrv_change_backing_file(blk_bs(blk), backing_file, backing_format);
         if (ret < 0) {
             error_setg_errno(errp, -ret, "Could not assign backing file '%s' "
                              "with format '%s'", backing_file, backing_format);
@@ -2280,9 +2270,9 @@ static int qcow2_create2(const char *filename, int64_t total_size,
 
     /* And if we're supposed to preallocate metadata, do that now */
     if (prealloc != PREALLOC_MODE_OFF) {
-        BDRVQcow2State *s = bs->opaque;
+        BDRVQcow2State *s = blk_bs(blk)->opaque;
         qemu_co_mutex_lock(&s->lock);
-        ret = preallocate(bs);
+        ret = preallocate(blk_bs(blk));
         qemu_co_mutex_unlock(&s->lock);
         if (ret < 0) {
             error_setg_errno(errp, -ret, "Could not preallocate metadata");
@@ -2290,24 +2280,25 @@ static int qcow2_create2(const char *filename, int64_t total_size,
         }
     }
 
-    bdrv_unref(bs);
-    bs = NULL;
+    blk_unref(blk);
+    blk = NULL;
 
     /* Reopen the image without BDRV_O_NO_FLUSH to flush it before returning */
     options = qdict_new();
     qdict_put(options, "driver", qstring_from_str("qcow2"));
-    ret = bdrv_open(&bs, filename, NULL, options,
-                    BDRV_O_RDWR | BDRV_O_CACHE_WB | BDRV_O_NO_BACKING,
-                    &local_err);
-    if (local_err) {
+    blk = blk_new_open(filename, NULL, options,
+                       BDRV_O_RDWR | BDRV_O_CACHE_WB | BDRV_O_NO_BACKING,
+                       &local_err);
+    if (blk == NULL) {
         error_propagate(errp, local_err);
+        ret = -EIO;
         goto out;
     }
 
     ret = 0;
 out:
-    if (bs) {
-        bdrv_unref(bs);
+    if (blk) {
+        blk_unref(blk);
     }
     return ret;
 }
@@ -2809,15 +2800,15 @@ static ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *bs)
 
     *spec_info = (ImageInfoSpecific){
         .type  = IMAGE_INFO_SPECIFIC_KIND_QCOW2,
-        .u.qcow2 = g_new(ImageInfoSpecificQCow2, 1),
+        .u.qcow2.data = g_new(ImageInfoSpecificQCow2, 1),
     };
     if (s->qcow_version == 2) {
-        *spec_info->u.qcow2 = (ImageInfoSpecificQCow2){
+        *spec_info->u.qcow2.data = (ImageInfoSpecificQCow2){
             .compat             = g_strdup("0.10"),
             .refcount_bits      = s->refcount_bits,
         };
     } else if (s->qcow_version == 3) {
-        *spec_info->u.qcow2 = (ImageInfoSpecificQCow2){
+        *spec_info->u.qcow2.data = (ImageInfoSpecificQCow2){
             .compat             = g_strdup("1.1"),
             .lazy_refcounts     = s->compatible_features &
                                   QCOW2_COMPAT_LAZY_REFCOUNTS,

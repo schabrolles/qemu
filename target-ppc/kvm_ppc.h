@@ -58,6 +58,7 @@ void kvmppc_hash64_write_pte(CPUPPCState *env, target_ulong pte_index,
                              target_ulong pte0, target_ulong pte1);
 bool kvmppc_has_cap_fixup_hcalls(void);
 int kvmppc_enable_hwrng(void);
+int kvmppc_put_books_sregs(PowerPCCPU *cpu);
 
 #else
 
@@ -259,6 +260,11 @@ static inline bool kvmppc_has_cap_fixup_hcalls(void)
 static inline int kvmppc_enable_hwrng(void)
 {
     return -1;
+}
+
+static inline int kvmppc_put_books_sregs(PowerPCCPU *cpu)
+{
+    abort();
 }
 #endif
 
