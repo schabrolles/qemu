@@ -621,6 +621,18 @@ static void spapr_populate_cpu_dt(CPUState *cs, void *fdt, int offset,
         0x80, 0x00, 0x80, 0x00, 0x80, 0x00 };
     uint8_t *pa_features;
     size_t pa_size;
+    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
+    int drc_index;
+
+    if (smc->dr_cpu_enabled) {
+        drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_CPU, index);
+        g_assert(drc);
+        drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+        drc_index = drck->get_index(drc);
+        _FDT((fdt_setprop_cell(fdt, offset, "ibm,my-drc-index", drc_index)));
+    }
 
     _FDT((fdt_setprop_cell(fdt, offset, "reg", index)));
     _FDT((fdt_setprop_string(fdt, offset, "device_type", "cpu")));
@@ -2253,6 +2265,117 @@ out:
     error_propagate(errp, local_err);
 }
 
+static void *spapr_populate_hotplug_cpu_dt(DeviceState *dev, CPUState *cs,
+                                           int *fdt_offset,
+                                           sPAPRMachineState *spapr)
+{
+    PowerPCCPU *cpu = POWERPC_CPU(cs);
+    DeviceClass *dc = DEVICE_GET_CLASS(cs);
+    int id = ppc_get_vcpu_dt_id(cpu);
+    void *fdt;
+    int offset, fdt_size;
+    char *nodename;
+
+    fdt = create_device_tree(&fdt_size);
+    nodename = g_strdup_printf("%s@%x", dc->fw_name, id);
+    offset = fdt_add_subnode(fdt, 0, nodename);
+
+    spapr_populate_cpu_dt(cs, fdt, offset, spapr);
+    g_free(nodename);
+
+    *fdt_offset = offset;
+    return fdt;
+}
+
+static void spapr_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
+                            Error **errp)
+{
+    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+    CPUState *cs = CPU(dev);
+    PowerPCCPU *cpu = POWERPC_CPU(cs);
+    int id = ppc_get_vcpu_dt_id(cpu);
+    sPAPRDRConnector *drc =
+        spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_CPU, id);
+    sPAPRDRConnectorClass *drck;
+    int smt = kvmppc_smt_threads();
+    Error *local_err = NULL;
+    void *fdt = NULL;
+    int i, fdt_offset = 0;
+
+    /* Set NUMA node for the added CPUs  */
+    for (i = 0; i < nb_numa_nodes; i++) {
+        if (test_bit(cs->cpu_index, numa_info[i].node_cpu)) {
+            cs->numa_node = i;
+            break;
+        }
+    }
+
+    /*
+     * SMT threads return from here, only main thread (core) will
+     * continue and signal hotplug event to the guest.
+     */
+    if ((id % smt) != 0) {
+        return;
+    }
+
+    if (!smc->dr_cpu_enabled) {
+        /*
+         * This is a cold plugged CPU but the machine doesn't support
+         * DR. So skip the hotplug path ensuring that the CPU is brought
+         * up online with out an associated DR connector.
+         */
+        return;
+    }
+
+    g_assert(drc);
+
+    /*
+     * Setup CPU DT entries only for hotplugged CPUs. For boot time or
+     * coldplugged CPUs DT entries are setup in spapr_finalize_fdt().
+     */
+    if (dev->hotplugged) {
+        fdt = spapr_populate_hotplug_cpu_dt(dev, cs, &fdt_offset, spapr);
+    }
+
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+    drck->attach(drc, dev, fdt, fdt_offset, !dev->hotplugged, &local_err);
+    if (local_err) {
+        g_free(fdt);
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    /*
+     * We send hotplug notification interrupt to the guest only in case
+     * of hotplugged CPUs.
+     */
+    if (dev->hotplugged) {
+        spapr_hotplug_req_add_by_index(drc);
+    } else {
+        /*
+         * HACK to support removal of hotplugged CPU after VM migration:
+         *
+         * Since we want to be able to hot-remove those coldplugged CPUs
+         * started at boot time using -device option at the target VM, we set
+         * the right allocation_state and isolation_state for them, which for
+         * the hotplugged CPUs would be set via RTAS calls done from the
+         * guest during hotplug.
+         *
+         * This allows the coldplugged CPUs started using -device option to
+         * have the right isolation and allocation states as expected by the
+         * CPU hot removal code.
+         *
+         * This hack will be removed once we have DRC states migrated as part
+         * of VM migration.
+         */
+        drck->set_allocation_state(drc, SPAPR_DR_ALLOCATION_STATE_USABLE);
+        drck->set_isolation_state(drc, SPAPR_DR_ISOLATION_STATE_UNISOLATED);
+    }
+
+    return;
+}
+
 static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
@@ -2299,6 +2422,15 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
         PowerPCCPU *cpu = POWERPC_CPU(cs);
 
         spapr_cpu_init(spapr, cpu, errp);
+        spapr_cpu_reset(cpu);
+
+        /*
+         * Fail hotplug on machines where CPU DR isn't enabled.
+         */
+        if (!smc->dr_cpu_enabled && dev->hotplugged) {
+            return;
+        }
+        spapr_cpu_plug(hotplug_dev, dev, errp);
     }
 }
 
