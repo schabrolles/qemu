@@ -111,7 +111,9 @@ static void icp_kvm_reset(DeviceState *dev)
     icp->mfrr = 0xff;
 
     /* Make all outputs are deasserted */
-    qemu_set_irq(icp->output, 0);
+    if (icp->output) {
+        qemu_set_irq(icp->output, 0);
+    }
 
     icp_set_kvm_state(icp, 1);
 }

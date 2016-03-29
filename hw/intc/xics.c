@@ -49,9 +49,11 @@ void xics_cpu_destroy(XICSState *icp, PowerPCCPU *cpu)
 {
     CPUState *cs = CPU(cpu);
     XICSStateClass *info = XICS_COMMON_GET_CLASS(icp);
+    ICPState *ss = &icp->ss[cs->cpu_index];
 
     assert(cs->cpu_index < icp->nr_servers);
 
+    ss->output = NULL;
     if (info->cpu_destroy) {
         info->cpu_destroy(icp, cpu);
     }
