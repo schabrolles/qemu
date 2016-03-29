@@ -852,6 +852,22 @@ int object_child_foreach_recursive(Object *obj,
     return do_object_child_foreach(obj, fn, opaque, true);
 }
 
+bool object_has_no_children(Object *obj)
+{
+    ObjectProperty *prop = NULL;
+    GHashTableIter iter;
+
+    g_assert(obj);
+
+    g_hash_table_iter_init(&iter, obj->properties);
+    while (g_hash_table_iter_next(&iter, NULL, (gpointer *)&prop)) {
+        if (object_property_is_child(prop)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void object_class_get_list_tramp(ObjectClass *klass, void *opaque)
 {
     GSList **list = opaque;
