@@ -357,6 +357,14 @@ static void xics_kvm_cpu_setup(XICSState *icp, PowerPCCPU *cpu)
     }
 }
 
+static void xics_kvm_cpu_destroy(XICSState *icp, PowerPCCPU *cpu)
+{
+    CPUState *cs = CPU(cpu);
+    ICPState *ss = &icp->ss[cs->cpu_index];
+
+    ss->cs = NULL;
+}
+
 static void xics_kvm_set_nr_irqs(XICSState *icp, uint32_t nr_irqs, Error **errp)
 {
     icp->nr_irqs = icp->ics->nr_irqs = nr_irqs;
@@ -487,6 +495,7 @@ static void xics_kvm_class_init(ObjectClass *oc, void *data)
 
     dc->realize = xics_kvm_realize;
     xsc->cpu_setup = xics_kvm_cpu_setup;
+    xsc->cpu_destroy = xics_kvm_cpu_destroy;
     xsc->set_nr_irqs = xics_kvm_set_nr_irqs;
     xsc->set_nr_servers = xics_kvm_set_nr_servers;
 }
