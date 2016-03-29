@@ -9496,6 +9496,52 @@ static ObjectClass *ppc_cpu_class_by_name(const char *name)
     return NULL;
 }
 
+/*
+ * This is essentially same as cpu_generic_init() but without a set
+ * realize call.
+ */
+CPUState *cpu_ppc_create(const char *typename, const char *cpu_model)
+{
+    char *str, *name, *featurestr;
+    CPUState *cpu;
+    ObjectClass *oc;
+    CPUClass *cc;
+    Error *err = NULL;
+
+    str = g_strdup(cpu_model);
+    name = strtok(str, ",");
+
+    oc = cpu_class_by_name(typename, name);
+    if (oc == NULL) {
+        g_free(str);
+        return NULL;
+    }
+
+    cpu = CPU(object_new(object_class_get_name(oc)));
+    cc = CPU_GET_CLASS(cpu);
+
+    featurestr = strtok(NULL, ",");
+    cc->parse_features(cpu, featurestr, &err);
+    g_free(str);
+    if (err != NULL) {
+        goto out;
+    }
+
+out:
+    if (err != NULL) {
+        error_report("%s", error_get_pretty(err));
+        error_free(err);
+        object_unref(OBJECT(cpu));
+        return NULL;
+    }
+
+    return cpu;
+}
+
+/*
+ * TODO: This can be removed when all powerpc targets are converted to
+ * socket level CPU realization.
+ */
 PowerPCCPU *cpu_ppc_init(const char *cpu_model)
 {
     return POWERPC_CPU(cpu_generic_init(TYPE_POWERPC_CPU, cpu_model));

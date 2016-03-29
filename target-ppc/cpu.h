@@ -1209,6 +1209,7 @@ do {                                            \
 
 /*****************************************************************************/
 PowerPCCPU *cpu_ppc_init(const char *cpu_model);
+CPUState *cpu_ppc_create(const char *typename, const char *cpu_model);
 void ppc_translate_init(void);
 void gen_update_current_nip(void *opaque);
 int cpu_ppc_exec (CPUState *s);

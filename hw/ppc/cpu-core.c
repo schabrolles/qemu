@@ -8,6 +8,9 @@
 #include "qemu/osdep.h"
 #include "hw/qdev.h"
 #include "hw/ppc/cpu-core.h"
+#include "hw/boards.h"
+#include <sysemu/cpus.h>
+#include <sysemu/sysemu.h>
 
 static int ppc_cpu_core_realize_child(Object *child, void *opaque)
 {
@@ -33,10 +36,26 @@ static void ppc_cpu_core_class_init(ObjectClass *oc, void *data)
     dc->realize = ppc_cpu_core_realize;
 }
 
+static void ppc_cpu_core_instance_init(Object *obj)
+{
+    int i;
+    PowerPCCPU *cpu = NULL;
+    MachineState *machine = MACHINE(qdev_get_machine());
+    int threads_per_core = (smp_cpus > smp_threads) ? smp_threads : smp_cpus;
+
+    for (i = 0; i < threads_per_core; i++) {
+        cpu = POWERPC_CPU(cpu_ppc_create(TYPE_POWERPC_CPU, machine->cpu_model));
+        object_property_add_child(obj, "thread[*]", OBJECT(cpu), &error_abort);
+        object_unref(OBJECT(cpu));
+    }
+}
+
 static const TypeInfo ppc_cpu_core_type_info = {
     .name = TYPE_POWERPC_CPU_CORE,
     .parent = TYPE_DEVICE,
     .class_init = ppc_cpu_core_class_init,
+    .instance_init = ppc_cpu_core_instance_init,
+    .instance_size = sizeof(PowerPCCPUCore),
 };
 
 static void ppc_cpu_core_register_types(void)
