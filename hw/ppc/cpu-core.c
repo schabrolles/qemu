@@ -11,6 +11,7 @@
 #include "hw/boards.h"
 #include <sysemu/cpus.h>
 #include <sysemu/sysemu.h>
+#include "qemu/error-report.h"
 
 static int ppc_cpu_core_realize_child(Object *child, void *opaque)
 {
@@ -58,6 +59,11 @@ static void ppc_cpu_core_instance_init(Object *obj)
 
     for (i = 0; i < threads_per_core; i++) {
         cpu = POWERPC_CPU(cpu_ppc_create(TYPE_POWERPC_CPU, machine->cpu_model));
+        if (!cpu) {
+            error_report("Unable to find PowerPC CPU definition: %s\n",
+                          machine->cpu_model);
+            exit(EXIT_FAILURE);
+        }
         object_property_add_child(obj, "thread[*]", OBJECT(cpu), &error_abort);
         object_unref(OBJECT(cpu));
     }
