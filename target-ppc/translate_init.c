@@ -31,6 +31,7 @@
 #include "qemu/error-report.h"
 #include "qapi/visitor.h"
 #include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 
 //#define PPC_DUMP_CPU
 //#define PPC_DEBUG_SPR
@@ -9268,8 +9269,17 @@ static void ppc_cpu_unrealizefn(DeviceState *dev, Error **errp)
 {
     PowerPCCPU *cpu = POWERPC_CPU(dev);
     CPUPPCState *env = &cpu->env;
+    CPUClass *cc = CPU_GET_CLASS(dev);
     opc_handler_t **table;
     int i, j;
+
+    if (qdev_get_vmsd(dev) == NULL) {
+        vmstate_unregister(NULL, &vmstate_cpu_common, cpu);
+    }
+
+    if (cc->vmsd != NULL) {
+        vmstate_unregister(NULL, cc->vmsd, cpu);
+    }
 
     cpu_exec_exit(CPU(dev));
 

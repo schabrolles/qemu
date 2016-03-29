@@ -1756,6 +1756,14 @@ static void spapr_validate_node_memory(MachineState *machine, Error **errp)
     }
 }
 
+static void spapr_cpu_destroy(PowerPCCPU *cpu)
+{
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+
+    xics_cpu_destroy(spapr->icp, cpu);
+    qemu_unregister_reset(spapr_cpu_reset, cpu);
+}
+
 /* pSeries LPAR / sPAPR hardware init */
 static void ppc_spapr_init(MachineState *machine)
 {
@@ -2287,6 +2295,24 @@ static void *spapr_populate_hotplug_cpu_dt(DeviceState *dev, CPUState *cs,
     return fdt;
 }
 
+static void spapr_cpu_release(DeviceState *dev, void *opaque)
+{
+    CPUState *cs;
+    int i;
+    int id = ppc_get_vcpu_dt_id(POWERPC_CPU(CPU(dev)));
+
+    for (i = id; i < id + smp_threads; i++) {
+        CPU_FOREACH(cs) {
+            PowerPCCPU *cpu = POWERPC_CPU(cs);
+
+            if (i == ppc_get_vcpu_dt_id(cpu)) {
+                spapr_cpu_destroy(cpu);
+                cpu_remove(cs);
+            }
+        }
+    }
+}
+
 static void spapr_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
                             Error **errp)
 {
@@ -2376,6 +2402,59 @@ static void spapr_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     return;
 }
 
+static int spapr_cpu_unplug(Object *obj, void *opaque)
+{
+    Error **errp = opaque;
+    DeviceState *dev = DEVICE(obj);
+    CPUState *cs = CPU(dev);
+    PowerPCCPU *cpu = POWERPC_CPU(cs);
+    int id = ppc_get_vcpu_dt_id(cpu);
+    int smt = kvmppc_smt_threads();
+    sPAPRDRConnector *drc =
+        spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_CPU, id);
+    sPAPRDRConnectorClass *drck;
+    Error *local_err = NULL;
+
+    /*
+     * SMT threads return from here, only main thread (core) will
+     * continue and signal hot unplug event to the guest.
+     */
+    if ((id % smt) != 0) {
+        return 0;
+    }
+    g_assert(drc);
+
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+    drck->detach(drc, dev, spapr_cpu_release, NULL, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return -1;
+    }
+
+    /*
+     * In addition to hotplugged CPUs, send the hot-unplug notification
+     * interrupt to the guest for coldplugged CPUs started via -device
+     * option too.
+     */
+    spapr_hotplug_req_remove_by_index(drc);
+
+    return 0;
+}
+
+static int spapr_cpu_core_unplug(Object *obj, void *opaque)
+{
+    Error **errp = opaque;
+
+    object_child_foreach(obj, spapr_cpu_unplug, errp);
+    return 0;
+}
+
+static void spapr_cpu_socket_unplug(HotplugHandler *hotplug_dev,
+                            DeviceState *dev, Error **errp)
+{
+    object_child_foreach(OBJECT(dev), spapr_cpu_core_unplug, errp);
+}
+
 static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
@@ -2428,6 +2507,13 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
          * Fail hotplug on machines where CPU DR isn't enabled.
          */
         if (!smc->dr_cpu_enabled && dev->hotplugged) {
+            /*
+             * FIXME: Ideally should fail hotplug here by doing an error_setg,
+             * but failing hotplug here doesn't work well with the vCPU object
+             * removal code. Hence silently refusing to add CPUs here.
+             */
+            spapr_cpu_destroy(cpu);
+            cpu_remove(cs);
             return;
         }
         spapr_cpu_plug(hotplug_dev, dev, errp);
@@ -2437,7 +2523,15 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
 static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
-    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU_SOCKET)) {
+        if (!smc->dr_cpu_enabled) {
+            error_setg(errp, "CPU hot unplug not supported on this machine");
+            return;
+        }
+        spapr_cpu_socket_unplug(hotplug_dev, dev, errp);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         error_setg(errp, "Memory hot unplug not supported by sPAPR");
     }
 }
@@ -2446,6 +2540,7 @@ static HotplugHandler *spapr_get_hotpug_handler(MachineState *machine,
                                              DeviceState *dev)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM) ||
+        object_dynamic_cast(OBJECT(dev), TYPE_CPU_SOCKET) ||
         object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         return HOTPLUG_HANDLER(machine);
     }
