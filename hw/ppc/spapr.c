@@ -1839,7 +1839,6 @@ static void ppc_spapr_init(MachineState *machine)
             error_report("Unable to find PowerPC CPU definition");
             exit(1);
         }
-        spapr_cpu_init(spapr, cpu, &error_fatal);
     }
 
     if (kvm_enabled()) {
@@ -2255,6 +2254,7 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
     sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         int node;
@@ -2291,6 +2291,11 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
         }
 
         spapr_memory_plug(hotplug_dev, dev, node, errp);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        CPUState *cs = CPU(dev);
+        PowerPCCPU *cpu = POWERPC_CPU(cs);
+
+        spapr_cpu_init(spapr, cpu, errp);
     }
 }
 
@@ -2305,7 +2310,8 @@ static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
 static HotplugHandler *spapr_get_hotpug_handler(MachineState *machine,
                                              DeviceState *dev)
 {
-    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM) ||
+        object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         return HOTPLUG_HANDLER(machine);
     }
     return NULL;
