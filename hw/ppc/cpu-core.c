@@ -41,9 +41,8 @@ static void ppc_cpu_core_instance_init(Object *obj)
     int i;
     PowerPCCPU *cpu = NULL;
     MachineState *machine = MACHINE(qdev_get_machine());
-    int threads_per_core = (smp_cpus > smp_threads) ? smp_threads : smp_cpus;
 
-    for (i = 0; i < threads_per_core; i++) {
+    for (i = 0; i < smp_threads; i++) {
         cpu = POWERPC_CPU(cpu_ppc_create(TYPE_POWERPC_CPU, machine->cpu_model));
         object_property_add_child(obj, "thread[*]", OBJECT(cpu), &error_abort);
         object_unref(OBJECT(cpu));

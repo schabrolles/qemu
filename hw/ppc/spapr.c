@@ -69,6 +69,8 @@
 
 #include <libfdt.h>
 
+static int smp_max_cores, smp_nr_sockets;
+
 /* SLOF memory layout:
  *
  * SLOF raw image loaded at 0, copies its romfs right below the flat
@@ -1765,6 +1767,50 @@ static void spapr_cpu_destroy(PowerPCCPU *cpu)
     qemu_unregister_reset(spapr_cpu_reset, cpu);
 }
 
+static void spapr_sanitize_cpu_topology(Error **errp)
+{
+    int smp_nr_cores;
+    QemuOpts *opts = qemu_opts_find(qemu_find_opts("smp-opts"), NULL);
+    int sockets = opts ? qemu_opt_get_number(opts, "sockets", 0) : 0;
+
+    /*
+     * Don't support topologies where number of CPUs specified is even
+     * less than the number of SMT threads.
+     */
+    if (smp_cpus < smp_threads) {
+        error_setg(errp, "Can't boot with cpus(%d) less than threads(%d)",
+                   smp_cpus, smp_threads);
+        return;
+    }
+
+    /*
+     * Maximum cores possible and the current number of cores the
+     * guest boots with are calculated based on max_cpus and smp_cpus
+     * respectively.
+     */
+    smp_max_cores = (max_cpus/smp_threads) ? max_cpus/smp_threads : 1;
+    smp_nr_cores = (smp_cpus/smp_threads) ? smp_cpus/smp_threads : 1;
+
+    /*
+     * Deduce the number of sockets based on number of CPUs, cores
+     * and threads. If "sockets=" hasn't been explicitly specified
+     * go with 1 core per socket.
+     */
+    smp_nr_sockets = DIV_ROUND_UP(smp_cpus, smp_cores * smp_threads);
+    smp_nr_sockets = sockets ? smp_nr_sockets : smp_nr_cores;
+
+    /*
+     * There can be topologies where the number of CPUs specified can't
+     * fully fit into cores and will result in partially populated cores.
+     * Prevent that by ensuring that we boot only full cores.
+     */
+    if (smp_nr_cores < smp_nr_sockets) {
+        smp_nr_sockets = smp_nr_cores;
+    }
+
+    smp_cores_per_socket = smp_nr_cores/smp_nr_sockets;
+}
+
 /* pSeries LPAR / sPAPR hardware init */
 static void ppc_spapr_init(MachineState *machine)
 {
@@ -1788,12 +1834,8 @@ static void ppc_spapr_init(MachineState *machine)
     char *filename;
     int smt = kvmppc_smt_threads();
     Object *socket;
-    QemuOpts *opts = qemu_opts_find(qemu_find_opts("smp-opts"), NULL);
-    int sockets = opts ? qemu_opt_get_number(opts, "sockets", 0) : 0;
-    int cores = (smp_cpus/smp_threads) ? smp_cpus/smp_threads : 1;
 
     msi_nonbroken = true;
-    sockets = sockets ? sockets : cores;
 
     QLIST_INIT(&spapr->phbs);
 
@@ -1836,6 +1878,8 @@ static void ppc_spapr_init(MachineState *machine)
     /* Setup a load limit for the ramdisk leaving room for SLOF and FDT */
     load_limit = MIN(spapr->rma_size, RTAS_MAX_ADDR) - FW_OVERHEAD;
 
+    spapr_sanitize_cpu_topology(&error_abort);
+
     /* Set up Interrupt Controller before we create the VCPUs */
     spapr->icp = xics_system_init(machine,
                                   DIV_ROUND_UP(max_cpus * kvmppc_smt_threads(),
@@ -1847,7 +1891,7 @@ static void ppc_spapr_init(MachineState *machine)
     }
 
     if (smc->dr_cpu_enabled) {
-        for (i = 0; i < max_cpus/smp_threads; i++) {
+        for (i = 0; i < smp_max_cores; i++) {
             sPAPRDRConnector *drc =
                 spapr_dr_connector_new(OBJECT(machine),
                                        SPAPR_DR_CONNECTOR_TYPE_CPU, i * smt);
@@ -1860,7 +1904,7 @@ static void ppc_spapr_init(MachineState *machine)
         machine->cpu_model = kvm_enabled() ? "host" : "POWER7";
     }
 
-    for (i = 0; i < sockets; i++) {
+    for (i = 0; i < smp_nr_sockets; i++) {
         socket = object_new(TYPE_POWERPC_CPU_SOCKET);
         object_property_set_bool(socket, true, "realized", &error_abort);
     }

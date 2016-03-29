@@ -39,12 +39,8 @@ static void ppc_cpu_socket_instance_init(Object *obj)
 {
     int i;
     Object *core;
-    QemuOpts *opts = qemu_opts_find(qemu_find_opts("smp-opts"), NULL);
-    int sockets = opts ? qemu_opt_get_number(opts, "sockets", 0) : 0;
-    int cores = (smp_cpus/smp_threads) ? smp_cpus/smp_threads : 1;
 
-    sockets = sockets ? sockets : cores;
-    for (i = 0; i < cores/sockets; i++) {
+    for (i = 0; i < smp_cores_per_socket; i++) {
         core = object_new(TYPE_POWERPC_CPU_CORE);
         object_property_add_child(obj, "core[*]", core, &error_abort);
         object_unref(core);
