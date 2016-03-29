@@ -65,6 +65,7 @@
 
 #include "hw/compat.h"
 #include "qemu-common.h"
+#include "qmp-commands.h"
 
 #include <libfdt.h>
 
@@ -2293,6 +2294,47 @@ static void *spapr_populate_hotplug_cpu_dt(DeviceState *dev, CPUState *cs,
 
     *fdt_offset = offset;
     return fdt;
+}
+
+/*
+ * QMP: info spapr-cpu-sockets
+ */
+static int qmp_spapr_cpu_socket_list(Object *obj, void *opaque)
+{
+    sPAPRCPUSocketList ***prev = opaque;
+
+    if (object_dynamic_cast(obj, TYPE_CPU_SOCKET)) {
+        DeviceClass *dc = DEVICE_GET_CLASS(obj);
+        DeviceState *dev = DEVICE(obj);
+
+        if (dev->realized) {
+            sPAPRCPUSocketList *elem = g_new0(sPAPRCPUSocketList, 1);
+            sPAPRCPUSocket *s = g_new0(sPAPRCPUSocket, 1);
+
+            if (dev->id) {
+                s->has_id = true;
+                s->id = g_strdup(dev->id);
+            }
+            s->hotplugged = dev->hotplugged;
+            s->hotpluggable = dc->hotpluggable;
+            elem->value = s;
+            elem->next = NULL;
+            **prev = elem;
+            *prev = &elem->next;
+        }
+    }
+
+    object_child_foreach(obj, qmp_spapr_cpu_socket_list, opaque);
+    return 0;
+}
+
+sPAPRCPUSocketList *qmp_query_spapr_cpu_sockets(Error **errp)
+{
+    sPAPRCPUSocketList *head = NULL;
+    sPAPRCPUSocketList **prev = &head;
+
+    qmp_spapr_cpu_socket_list(qdev_get_machine(), &prev);
+    return head;
 }
 
 static void spapr_cpu_release(DeviceState *dev, void *opaque)

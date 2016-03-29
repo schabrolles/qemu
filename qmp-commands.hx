@@ -4577,6 +4577,32 @@ Example:
                  } ] }
 EQMP
 
+#if defined TARGET_PPC64
+    {
+        .name       = "query-spapr-cpu-sockets",
+        .args_type  = "",
+        .mhandler.cmd_new = qmp_marshal_query_spapr_cpu_sockets,
+    },
+#endif
+
+SQMP
+@query-spapr-cpu-sockets
+------------------------
+
+Show sPAPR CPU devices information.
+
+Example:
+-> { "execute": "query-spapr-cpu-sockets" }
+<- { "return": [
+       {
+         "id": "sock3",
+         "hotpluggable": true,
+         "hotplugged": true,
+       }
+     ]
+   }
+EQMP
+
     {
         .name       = "query-acpi-ospm-status",
         .args_type  = "",
