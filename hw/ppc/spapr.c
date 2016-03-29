@@ -2617,16 +2617,19 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
         }
 
         /*
-         * Don't support hotplug for topologies that have or can
-         * result in partially filled cores.
+         * Don't support hotplug for topologies that
+         * - that have partially filled cores or
+         * - that have partially filled sockets or
+         * - that can result in partially filled cores/sockets after hotplug.
          */
-        if (((smp_cpus % smp_threads) || (max_cpus % smp_threads))
+        if (((smp_cpus % smp_threads) || (max_cpus % smp_threads) ||
+            (smp_cpus % (smp_cores * smp_threads)))
                     && dev->hotplugged) {
             spapr_cpu_destroy(cpu);
             cpu_remove_sync(cs);
             error_setg(errp, "The specified CPU topology with SMT%d mode, "
                 "%d CPUs and %d maxcpus can't support CPU hotplug since "
-                "CPUs can't be fit fully into cores",
+                "CPUs can't be fit fully into cores/sockets",
                 smp_threads, smp_cpus, max_cpus);
             return;
         }
