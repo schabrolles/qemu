@@ -988,6 +988,16 @@ static void spapr_finalize_fdt(sPAPRMachineState *spapr,
         _FDT(spapr_drc_populate_dt(fdt, 0, NULL, SPAPR_DR_CONNECTOR_TYPE_LMB));
     }
 
+    if (smc->dr_cpu_enabled) {
+        int offset = fdt_path_offset(fdt, "/cpus");
+        ret = spapr_drc_populate_dt(fdt, offset, NULL,
+                                    SPAPR_DR_CONNECTOR_TYPE_CPU);
+        if (ret < 0) {
+            error_report("Couldn't set up CPU DR device tree properties");
+            exit(1);
+        }
+    }
+
     _FDT((fdt_pack(fdt)));
 
     if (fdt_totalsize(fdt) > FDT_MAX_SIZE) {
@@ -1755,6 +1765,7 @@ static void ppc_spapr_init(MachineState *machine)
     long load_limit, fw_size;
     bool kernel_le = false;
     char *filename;
+    int smt = kvmppc_smt_threads();
 
     msi_nonbroken = true;
 
@@ -1807,6 +1818,15 @@ static void ppc_spapr_init(MachineState *machine)
 
     if (smc->dr_lmb_enabled) {
         spapr_validate_node_memory(machine, &error_fatal);
+    }
+
+    if (smc->dr_cpu_enabled) {
+        for (i = 0; i < max_cpus/smp_threads; i++) {
+            sPAPRDRConnector *drc =
+                spapr_dr_connector_new(OBJECT(machine),
+                                       SPAPR_DR_CONNECTOR_TYPE_CPU, i * smt);
+            qemu_register_reset(spapr_drc_reset, drc);
+        }
     }
 
     /* init CPUs */
@@ -2329,6 +2349,7 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
     mc->cpu_index_to_socket_id = spapr_cpu_index_to_socket_id;
 
     smc->dr_lmb_enabled = true;
+    smc->dr_cpu_enabled = true;
     fwc->get_dev_path = spapr_get_fw_dev_path;
     nc->nmi_monitor_handler = spapr_nmi;
 }
@@ -2461,6 +2482,7 @@ static void spapr_machine_2_3_instance_options(MachineState *machine)
 
     spapr_machine_2_4_instance_options(machine);
     smc->dr_lmb_enabled = false;
+    smc->dr_cpu_enabled = false;
     savevm_skip_section_footers();
     global_state_set_optional();
     savevm_skip_configuration();

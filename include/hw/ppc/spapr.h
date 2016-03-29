@@ -36,6 +36,7 @@ struct sPAPRMachineClass {
 
     /*< public >*/
     bool dr_lmb_enabled;       /* enable dynamic-reconfig/hotplug of LMBs */
+    bool dr_cpu_enabled;       /* enable dynamic-reconfig/hotplug of CPUs */
     bool use_ohci_by_default;  /* use USB-OHCI instead of XHCI */
 };
 
