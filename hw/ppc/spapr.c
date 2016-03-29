@@ -97,6 +97,9 @@ static int smp_max_cores, smp_nr_sockets;
 
 #define HTAB_SIZE(spapr)        (1ULL << ((spapr)->htab_shift))
 
+static QLIST_HEAD(cpu_unplug_list, CPUUnplug) cpu_unplug_list
+                  = QLIST_HEAD_INITIALIZER(cpu_unplug_list);
+
 static XICSState *try_create_xics(const char *type, int nr_servers,
                                   int nr_irqs, Error **errp)
 {
@@ -2391,11 +2394,38 @@ static void spapr_destroy_cpu_core(Object *core)
     }
 }
 
+static void spapr_cpu_socket_cleanup(void)
+{
+    CPUUnplug *unplug, *next;
+    Object *thread, *core;
+
+    QLIST_FOREACH_SAFE(unplug, &cpu_unplug_list, node, next) {
+        thread = unplug->cpu;
+        core = thread->parent;
+
+        object_unparent(thread);
+        if (core && object_has_no_children(core)) {
+            spapr_destroy_cpu_core(core);
+        }
+        QLIST_REMOVE(unplug, node);
+        g_free(unplug);
+    }
+}
+
+static void spapr_add_cpu_to_unplug_list(Object *cpu)
+{
+    CPUUnplug *unplug = g_malloc(sizeof(*unplug));
+
+    unplug->cpu = cpu;
+    QLIST_INSERT_HEAD(&cpu_unplug_list, unplug, node);
+}
+
 static void spapr_cpu_release(DeviceState *dev, void *opaque)
 {
     CPUState *cs, *cs_next;
     int i;
     int id = ppc_get_vcpu_dt_id(POWERPC_CPU(CPU(dev)));
+    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
 
     for (i = id; i < id + smp_threads; i++) {
         CPU_FOREACH_SAFE(cs, cs_next) {
@@ -2406,6 +2436,20 @@ static void spapr_cpu_release(DeviceState *dev, void *opaque)
             if (i == ppc_get_vcpu_dt_id(cpu)) {
                 spapr_cpu_destroy(cpu);
                 cpu_remove_sync(cs);
+
+                /*
+                 * If we are already walking the CPU object hierarchy
+                 * as part of the unplug request, don't again walk up the
+                 * same hierarchy, but instead add this CPU object to the
+                 * unplug list so that it can be removed later safely.
+                 *
+                 * This typically happens when drmgr removal is done
+                 * before issuing the device_del command.
+                 */
+                if (smc->cpu_unplug_active) {
+                    spapr_add_cpu_to_unplug_list(thread);
+                    continue;
+                }
                 object_unparent(thread);
                 if (core && object_has_no_children(core)) {
                     spapr_destroy_cpu_core(core);
@@ -2555,6 +2599,9 @@ static void spapr_cpu_socket_unplug(HotplugHandler *hotplug_dev,
                             DeviceState *dev, Error **errp)
 {
     object_child_foreach(OBJECT(dev), spapr_cpu_core_unplug, errp);
+    if (!QLIST_EMPTY(&cpu_unplug_list)) {
+        spapr_cpu_socket_cleanup();
+    }
 }
 
 static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
@@ -2657,7 +2704,9 @@ static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
                 smp_threads, smp_cpus, max_cpus);
         }
 
+        smc->cpu_unplug_active = true;
         spapr_cpu_socket_unplug(hotplug_dev, dev, errp);
+        smc->cpu_unplug_active = false;
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         error_setg(errp, "Memory hot unplug not supported by sPAPR");
     }
