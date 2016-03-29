@@ -32,6 +32,9 @@
 #include "qapi/visitor.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
+#if !defined(CONFIG_USER_ONLY)
+#include "sysemu/sysemu.h"
+#endif
 
 //#define PPC_DUMP_CPU
 //#define PPC_DEBUG_SPR
@@ -9055,6 +9058,10 @@ static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
     }
 
 #if !defined(CONFIG_USER_ONLY)
+    if (cs->cpu_index >= max_cpus) {
+        error_setg(errp, "Can't have more than %d CPUs", max_cpus);
+        goto fail_exec_init;
+    }
     cpu->cpu_dt_id = (cs->cpu_index / smp_threads) * max_smt
         + (cs->cpu_index % smp_threads);
 #endif
@@ -9062,7 +9069,7 @@ static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
     if (tcg_enabled()) {
         if (ppc_fixup_cpu(cpu) != 0) {
             error_setg(errp, "Unable to emulate selected CPU with TCG");
-            return;
+            goto fail_exec_init;
         }
     }
 
@@ -9071,14 +9078,14 @@ static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
         error_setg(errp, "CPU does not possess a BookE or 4xx MMU. "
                    "Please use qemu-system-ppc or qemu-system-ppc64 instead "
                    "or choose another CPU model.");
-        return;
+        goto fail_exec_init;
     }
 #endif
 
     create_ppc_opcodes(cpu, &local_err);
     if (local_err != NULL) {
         error_propagate(errp, local_err);
-        return;
+        goto fail_exec_init;
     }
     init_ppc_proc(cpu);
 
@@ -9263,6 +9270,10 @@ static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
         fflush(stdout);
     }
 #endif
+    return;
+
+fail_exec_init:
+    CPU_REMOVE(cs);
 }
 
 static void ppc_cpu_unrealizefn(DeviceState *dev, Error **errp)
