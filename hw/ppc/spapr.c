@@ -2381,19 +2381,35 @@ sPAPRCPUSocketList *qmp_query_spapr_cpu_sockets(Error **errp)
     return head;
 }
 
+static void spapr_destroy_cpu_core(Object *core)
+{
+    Object *socket = core->parent;
+
+    object_unparent(core);
+    if (socket && object_has_no_children(socket)) {
+        object_unparent(socket);
+    }
+}
+
 static void spapr_cpu_release(DeviceState *dev, void *opaque)
 {
-    CPUState *cs;
+    CPUState *cs, *cs_next;
     int i;
     int id = ppc_get_vcpu_dt_id(POWERPC_CPU(CPU(dev)));
 
     for (i = id; i < id + smp_threads; i++) {
-        CPU_FOREACH(cs) {
+        CPU_FOREACH_SAFE(cs, cs_next) {
             PowerPCCPU *cpu = POWERPC_CPU(cs);
+            Object *thread = OBJECT(cs);
+            Object *core = thread->parent;
 
             if (i == ppc_get_vcpu_dt_id(cpu)) {
                 spapr_cpu_destroy(cpu);
-                cpu_remove(cs);
+                cpu_remove_sync(cs);
+                object_unparent(thread);
+                if (core && object_has_no_children(core)) {
+                    spapr_destroy_cpu_core(core);
+                }
             }
         }
     }
@@ -2593,13 +2609,10 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
          * Fail hotplug on machines where CPU DR isn't enabled.
          */
         if (!smc->dr_cpu_enabled && dev->hotplugged) {
-            /*
-             * FIXME: Ideally should fail hotplug here by doing an error_setg,
-             * but failing hotplug here doesn't work well with the vCPU object
-             * removal code. Hence silently refusing to add CPUs here.
-             */
             spapr_cpu_destroy(cpu);
-            cpu_remove(cs);
+            cpu_remove_sync(cs);
+            error_setg(errp, "CPU hotplug not supported for this version "
+                "of pseries machine. Use pseries-2.4 or higher");
             return;
         }
         spapr_cpu_plug(hotplug_dev, dev, errp);
@@ -2613,7 +2626,8 @@ static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU_SOCKET)) {
         if (!smc->dr_cpu_enabled) {
-            error_setg(errp, "CPU hot unplug not supported on this machine");
+            error_setg(errp, "CPU hot removal not supported for this version "
+                "of pseries machine. Use pseries-2.4 or higher");
             return;
         }
         spapr_cpu_socket_unplug(hotplug_dev, dev, errp);

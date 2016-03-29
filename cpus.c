@@ -962,45 +962,19 @@ void async_run_on_cpu(CPUState *cpu, void (*func)(void *data), void *data)
     qemu_cpu_kick(cpu);
 }
 
-static void qemu_destroy_cpu_core(Object *core)
-{
-    Object *socket = core->parent;
-
-    object_unparent(core);
-    if (socket && object_has_no_children(socket)) {
-        object_unparent(socket);
-    }
-}
-
 static void qemu_kvm_destroy_vcpu(CPUState *cpu)
 {
-    Object *thread = OBJECT(cpu);
-    Object *core = thread->parent;
-
     CPU_REMOVE(cpu);
 
     if (kvm_destroy_vcpu(cpu) < 0) {
         error_report("kvm_destroy_vcpu failed.\n");
         exit(EXIT_FAILURE);
     }
-
-    object_unparent(thread);
-    if (core && object_has_no_children(core)) {
-        qemu_destroy_cpu_core(core);
-    }
 }
 
 static void qemu_tcg_destroy_vcpu(CPUState *cpu)
 {
-    Object *thread = OBJECT(cpu);
-    Object *core = thread->parent;
-
     CPU_REMOVE(cpu);
-    object_unparent(OBJECT(cpu));
-
-    if (core && object_has_no_children(core)) {
-        qemu_destroy_cpu_core(core);
-    }
 }
 
 static void flush_queued_work(CPUState *cpu)
