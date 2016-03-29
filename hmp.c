@@ -2380,3 +2380,22 @@ void hmp_info_dump(Monitor *mon, const QDict *qdict)
 
     qapi_free_DumpQueryResult(result);
 }
+
+void hmp_info_spapr_cpu_sockets(Monitor *mon, const QDict *qdict)
+{
+    Error *err = NULL;
+    sPAPRCPUSocketList *cpu_socket_list = qmp_query_spapr_cpu_sockets(&err);
+    sPAPRCPUSocketList *s = cpu_socket_list;
+
+    while (s) {
+        monitor_printf(mon, "sPAPR CPU device:\n");
+        monitor_printf(mon, "  id: %s\n", s->value->id ? s->value->id : "");
+        monitor_printf(mon, "  hotplugged: %s\n",
+                           s->value->hotplugged ? "true" : "false");
+        monitor_printf(mon, "  hotpluggable: %s\n",
+                           s->value->hotpluggable ? "true" : "false");
+        s = s->next;
+    }
+
+    qapi_free_sPAPRCPUSocketList(cpu_socket_list);
+}
