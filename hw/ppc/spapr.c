@@ -1788,8 +1788,8 @@ static void spapr_sanitize_cpu_topology(Error **errp)
      * guest boots with are calculated based on max_cpus and smp_cpus
      * respectively.
      */
-    smp_max_cores = (max_cpus/smp_threads) ? max_cpus/smp_threads : 1;
-    smp_nr_cores = (smp_cpus/smp_threads) ? smp_cpus/smp_threads : 1;
+    smp_max_cores = DIV_ROUND_UP(max_cpus, smp_threads);
+    smp_nr_cores = DIV_ROUND_UP(smp_cpus, smp_threads);
 
     /*
      * Deduce the number of sockets based on number of CPUs, cores
@@ -2615,6 +2615,22 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
                 "of pseries machine. Use pseries-2.4 or higher");
             return;
         }
+
+        /*
+         * Don't support hotplug for topologies that have or can
+         * result in partially filled cores.
+         */
+        if (((smp_cpus % smp_threads) || (max_cpus % smp_threads))
+                    && dev->hotplugged) {
+            spapr_cpu_destroy(cpu);
+            cpu_remove_sync(cs);
+            error_setg(errp, "The specified CPU topology with SMT%d mode, "
+                "%d CPUs and %d maxcpus can't support CPU hotplug since "
+                "CPUs can't be fit fully into cores",
+                smp_threads, smp_cpus, max_cpus);
+            return;
+        }
+
         spapr_cpu_plug(hotplug_dev, dev, errp);
     }
 }
@@ -2630,6 +2646,14 @@ static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
                 "of pseries machine. Use pseries-2.4 or higher");
             return;
         }
+
+        if ((smp_cpus % smp_threads) || (max_cpus % smp_threads)) {
+            error_setg(errp, "The specified CPU topology with SMT%d mode, "
+                "%d CPUs and %d maxcpus can't support CPU hot removal since "
+                "CPUs can't be fit fully into cores",
+                smp_threads, smp_cpus, max_cpus);
+        }
+
         spapr_cpu_socket_unplug(hotplug_dev, dev, errp);
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         error_setg(errp, "Memory hot unplug not supported by sPAPR");

@@ -41,8 +41,22 @@ static void ppc_cpu_core_instance_init(Object *obj)
     int i;
     PowerPCCPU *cpu = NULL;
     MachineState *machine = MACHINE(qdev_get_machine());
+    int threads_per_core;
 
-    for (i = 0; i < smp_threads; i++) {
+    /*
+     * Support topologies like -smp 15,cores=4,threads=4 where one core
+     * will have less than the specified SMT threads. The last core will
+     * always have the deficit even when -device options are used to
+     * cold-plug the cores.
+     */
+    if ((smp_remaining_cpus > 0) && (smp_remaining_cpus < smp_threads)) {
+        threads_per_core = smp_remaining_cpus;
+    } else {
+        threads_per_core = smp_threads;
+    }
+    smp_remaining_cpus -= threads_per_core;
+
+    for (i = 0; i < threads_per_core; i++) {
         cpu = POWERPC_CPU(cpu_ppc_create(TYPE_POWERPC_CPU, machine->cpu_model));
         object_property_add_child(obj, "thread[*]", OBJECT(cpu), &error_abort);
         object_unref(OBJECT(cpu));
