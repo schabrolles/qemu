@@ -1226,15 +1226,6 @@ STEXI
 Set the initial graphical resolution and depth (PPC, SPARC only).
 ETEXI
 
-DEF("input-linux", 1, QEMU_OPTION_input_linux,
-    "-input-linux <evdev>\n"
-    "                Use input device.\n", QEMU_ARCH_ALL)
-STEXI
-@item -input-linux @var{dev}
-@findex -input-linux
-Use input device.
-ETEXI
-
 DEF("vnc", HAS_ARG, QEMU_OPTION_vnc ,
     "-vnc display    start a VNC server on display\n", QEMU_ARCH_ALL)
 STEXI
@@ -1560,9 +1551,9 @@ DEF("smb", HAS_ARG, QEMU_OPTION_smb, "", QEMU_ARCH_ALL)
 
 DEF("netdev", HAS_ARG, QEMU_OPTION_netdev,
 #ifdef CONFIG_SLIRP
-    "-netdev user,id=str[,net=addr[/mask]][,host=addr][,ip6-net=addr[/int]]\n"
-    "         [,ip6-host=addr][,restrict=on|off][,hostname=host][,dhcpstart=addr]\n"
-    "         [,dns=addr][,ip6-dns=addr][,dnssearch=domain][,tftp=dir]\n"
+    "-netdev user,id=str[,net=addr[/mask]][,host=addr][,ipv6-net=addr[/int]]\n"
+    "         [,ipv6-host=addr][,restrict=on|off][,hostname=host][,dhcpstart=addr]\n"
+    "         [,dns=addr][,ipv6-dns=addr][,dnssearch=domain][,tftp=dir]\n"
     "         [,bootfile=f][,hostfwd=rule][,guestfwd=rule]"
 #ifndef _WIN32
                                              "[,smb=dir[,smbserver=addr]]\n"
@@ -1719,11 +1710,13 @@ either in the form a.b.c.d or as number of valid top-most bits. Default is
 Specify the guest-visible address of the host. Default is the 2nd IP in the
 guest network, i.e. x.x.x.2.
 
-@item ip6-net=@var{addr}[/@var{int}]
-Set IPv6 network address the guest will see. Optionally specify the prefix
-size, as number of valid top-most bits. Default is fec0::/64.
+@item ipv6-net=@var{addr}[/@var{int}]
+Set IPv6 network address the guest will see (default is fec0::/64). The
+network prefix is given in the usual hexadecimal IPv6 address
+notation. The prefix size is optional, and is given as the number of
+valid top-most bits (default is 64).
 
-@item ip6-host=@var{addr}
+@item ipv6-host=@var{addr}
 Specify the guest-visible IPv6 address of the host. Default is the 2nd IPv6 in
 the guest network, i.e. xxxx::2.
 
@@ -1744,7 +1737,7 @@ Specify the guest-visible address of the virtual nameserver. The address must
 be different from the host address. Default is the 3rd IP in the guest network,
 i.e. x.x.x.3.
 
-@item ip6-dns=@var{addr}
+@item ipv6-dns=@var{addr}
 Specify the guest-visible address of the IPv6 virtual nameserver. The address
 must be different from the host address. Default is the 3rd IP in the guest
 network, i.e. xxxx::3.
@@ -3161,6 +3154,24 @@ STEXI
 @item -D @var{logfile}
 @findex -D
 Output log in @var{logfile} instead of to stderr
+ETEXI
+
+DEF("dfilter", HAS_ARG, QEMU_OPTION_DFILTER, \
+    "-dfilter range,..  filter debug output to range of addresses (useful for -d cpu,exec,etc..)\n",
+    QEMU_ARCH_ALL)
+STEXI
+@item -dfilter @var{range1}[,...]
+@findex -dfilter
+Filter debug output to that relevant to a range of target addresses. The filter
+spec can be either @var{start}+@var{size}, @var{start}-@var{size} or
+@var{start}..@var{end} where @var{start} @var{end} and @var{size} are the
+addresses and sizes required. For example:
+@example
+    -dfilter 0x8000..0x8fff,0xffffffc000080000+0x200,0xffffffc000060000-0x1000
+@end example
+Will dump output for any code in the 0x1000 sized block starting at 0x8000 and
+the 0x200 sized block starting at 0xffffffc000080000 and another 0x1000 sized
+block starting at 0xffffffc00005f000.
 ETEXI
 
 DEF("L", HAS_ARG, QEMU_OPTION_L, \

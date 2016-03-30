@@ -39,6 +39,7 @@
 
 #include <libfdt.h>
 #include "hw/ppc/spapr_drc.h"
+#include "qemu/cutils.h"
 
 #define BRANCH_INST_MASK  0xFC000000
 extern bool mc_in_progress;
