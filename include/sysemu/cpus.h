@@ -18,10 +18,12 @@ void qtest_clock_warp(int64_t dest);
 /* vl.c */
 extern int smp_cores;
 extern int smp_threads;
+extern int smp_cores_per_socket;
 #else
 /* *-user doesn't have configurable SMP topology */
 #define smp_cores   1
 #define smp_threads 1
+#define smp_cores_per_socket 1
 #endif
 
 void list_cpus(FILE *f, fprintf_function cpu_fprintf, const char *optarg);

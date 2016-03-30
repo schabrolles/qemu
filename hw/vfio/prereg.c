@@ -14,6 +14,7 @@
 
 #include "hw/vfio/vfio-common.h"
 #include "hw/vfio/vfio.h"
+#include "hw/hw.h"
 #include "qemu/error-report.h"
 #include "trace.h"
 

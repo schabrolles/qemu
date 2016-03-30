@@ -800,6 +800,22 @@ STEXI
 Display the latest dump status.
 ETEXI
 
+#if defined(TARGET_PPC64)
+    {
+        .name       = "spapr-cpu-sockets",
+        .args_type  = "",
+        .params     = "",
+        .help       = "show sPAPR CPU devices",
+        .mhandler.cmd = hmp_info_spapr_cpu_sockets,
+    },
+#endif
+
+STEXI
+@item info spapr-cpu-sockets
+@findex spapr-cpu-sockets
+Show sPAPR CPU socket devices (PowerPC sPAPR only)
+ETEXI
+
 STEXI
 @end table
 ETEXI

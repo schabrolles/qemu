@@ -36,6 +36,8 @@ struct sPAPRMachineClass {
 
     /*< public >*/
     bool dr_lmb_enabled;       /* enable dynamic-reconfig/hotplug of LMBs */
+    bool dr_cpu_enabled;       /* enable dynamic-reconfig/hotplug of CPUs */
+    bool cpu_unplug_active;
     bool use_ohci_by_default;  /* use USB-OHCI instead of XHCI */
 };
 
@@ -623,6 +625,12 @@ struct sPAPRConfigureConnectorState {
 };
 
 void spapr_ccs_reset_hook(void *opaque);
+
+/* List to store unplugged CPU objects for lazy cleanup */
+typedef struct CPUUnplug {
+    Object *cpu;
+    QLIST_ENTRY(CPUUnplug) node;
+} CPUUnplug;
 
 #define TYPE_SPAPR_RTC "spapr-rtc"
 #define TYPE_SPAPR_RNG "spapr-rng"

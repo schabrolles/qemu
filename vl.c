@@ -156,9 +156,11 @@ CharDriverState *sclp_hds[MAX_SCLP_CONSOLES];
 int win2k_install_hack = 0;
 int singlestep = 0;
 int smp_cpus = 1;
+int smp_remaining_cpus = 1;
 int max_cpus = 0;
 int smp_cores = 1;
 int smp_threads = 1;
+int smp_cores_per_socket = 1;
 int acpi_enabled = 1;
 int no_hpet = 0;
 int fd_bootchk = 1;
@@ -1260,9 +1262,11 @@ static void smp_parse(QemuOpts *opts)
         }
 
         smp_cpus = cpus;
+        smp_remaining_cpus = cpus;
         smp_cores = cores > 0 ? cores : 1;
         smp_threads = threads > 0 ? threads : 1;
 
+        smp_cores_per_socket = smp_cores;
     }
 
     if (max_cpus == 0) {

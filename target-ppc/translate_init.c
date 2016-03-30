@@ -31,6 +31,10 @@
 #include "qemu/error-report.h"
 #include "qapi/visitor.h"
 #include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
+#if !defined(CONFIG_USER_ONLY)
+#include "sysemu/sysemu.h"
+#endif
 
 //#define PPC_DUMP_CPU
 //#define PPC_DEBUG_SPR
@@ -9245,6 +9249,10 @@ static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
     }
 
 #if !defined(CONFIG_USER_ONLY)
+    if (cs->cpu_index >= max_cpus) {
+        error_setg(errp, "Can't have more than %d CPUs", max_cpus);
+        goto fail_exec_init;
+    }
     cpu->cpu_dt_id = (cs->cpu_index / smp_threads) * max_smt
         + (cs->cpu_index % smp_threads);
 #endif
@@ -9252,7 +9260,7 @@ static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
     if (tcg_enabled()) {
         if (ppc_fixup_cpu(cpu) != 0) {
             error_setg(errp, "Unable to emulate selected CPU with TCG");
-            return;
+            goto fail_exec_init;
         }
     }
 
@@ -9261,14 +9269,14 @@ static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
         error_setg(errp, "CPU does not possess a BookE or 4xx MMU. "
                    "Please use qemu-system-ppc or qemu-system-ppc64 instead "
                    "or choose another CPU model.");
-        return;
+        goto fail_exec_init;
     }
 #endif
 
     create_ppc_opcodes(cpu, &local_err);
     if (local_err != NULL) {
         error_propagate(errp, local_err);
-        return;
+        goto fail_exec_init;
     }
     init_ppc_proc(cpu);
 
@@ -9453,14 +9461,27 @@ static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
         fflush(stdout);
     }
 #endif
+    return;
+
+fail_exec_init:
+    CPU_REMOVE(cs);
 }
 
 static void ppc_cpu_unrealizefn(DeviceState *dev, Error **errp)
 {
     PowerPCCPU *cpu = POWERPC_CPU(dev);
     CPUPPCState *env = &cpu->env;
+    CPUClass *cc = CPU_GET_CLASS(dev);
     opc_handler_t **table;
     int i, j;
+
+    if (qdev_get_vmsd(dev) == NULL) {
+        vmstate_unregister(NULL, &vmstate_cpu_common, cpu);
+    }
+
+    if (cc->vmsd != NULL) {
+        vmstate_unregister(NULL, cc->vmsd, cpu);
+    }
 
     cpu_exec_exit(CPU(dev));
 
@@ -9687,6 +9708,52 @@ static ObjectClass *ppc_cpu_class_by_name(const char *name)
     return NULL;
 }
 
+/*
+ * This is essentially same as cpu_generic_init() but without a set
+ * realize call.
+ */
+CPUState *cpu_ppc_create(const char *typename, const char *cpu_model)
+{
+    char *str, *name, *featurestr;
+    CPUState *cpu;
+    ObjectClass *oc;
+    CPUClass *cc;
+    Error *err = NULL;
+
+    str = g_strdup(cpu_model);
+    name = strtok(str, ",");
+
+    oc = cpu_class_by_name(typename, name);
+    if (oc == NULL) {
+        g_free(str);
+        return NULL;
+    }
+
+    cpu = CPU(object_new(object_class_get_name(oc)));
+    cc = CPU_GET_CLASS(cpu);
+
+    featurestr = strtok(NULL, ",");
+    cc->parse_features(cpu, featurestr, &err);
+    g_free(str);
+    if (err != NULL) {
+        goto out;
+    }
+
+out:
+    if (err != NULL) {
+        error_report("%s", error_get_pretty(err));
+        error_free(err);
+        object_unref(OBJECT(cpu));
+        return NULL;
+    }
+
+    return cpu;
+}
+
+/*
+ * TODO: This can be removed when all powerpc targets are converted to
+ * socket level CPU realization.
+ */
 PowerPCCPU *cpu_ppc_init(const char *cpu_model)
 {
     return POWERPC_CPU(cpu_generic_init(TYPE_POWERPC_CPU, cpu_model));

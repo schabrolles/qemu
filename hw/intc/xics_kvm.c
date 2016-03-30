@@ -114,7 +114,9 @@ static void icp_kvm_reset(DeviceState *dev)
     icp->mfrr = 0xff;
 
     /* Make all outputs are deasserted */
-    qemu_set_irq(icp->output, 0);
+    if (icp->output) {
+        qemu_set_irq(icp->output, 0);
+    }
 
     icp_set_kvm_state(icp, 1);
 }
@@ -335,6 +337,8 @@ static void xics_kvm_cpu_setup(XICSState *icp, PowerPCCPU *cpu)
         abort();
     }
 
+    ss->cs = cs;
+
     /*
      * If we are reusing a parked vCPU fd corresponding to the CPU
      * which was hot-removed earlier we don't have to renable
@@ -347,8 +351,6 @@ static void xics_kvm_cpu_setup(XICSState *icp, PowerPCCPU *cpu)
     if (icpkvm->kernel_xics_fd != -1) {
         int ret;
 
-        ss->cs = cs;
-
         ret = kvm_vcpu_enable_cap(cs, KVM_CAP_IRQ_XICS, 0,
                                   icpkvm->kernel_xics_fd, kvm_arch_vcpu_id(cs));
         if (ret < 0) {
@@ -358,6 +360,14 @@ static void xics_kvm_cpu_setup(XICSState *icp, PowerPCCPU *cpu)
         }
         ss->cap_irq_xics_enabled = true;
     }
+}
+
+static void xics_kvm_cpu_destroy(XICSState *icp, PowerPCCPU *cpu)
+{
+    CPUState *cs = CPU(cpu);
+    ICPState *ss = &icp->ss[cs->cpu_index];
+
+    ss->cs = NULL;
 }
 
 static void xics_kvm_set_nr_irqs(XICSState *icp, uint32_t nr_irqs, Error **errp)
@@ -490,6 +500,7 @@ static void xics_kvm_class_init(ObjectClass *oc, void *data)
 
     dc->realize = xics_kvm_realize;
     xsc->cpu_setup = xics_kvm_cpu_setup;
+    xsc->cpu_destroy = xics_kvm_cpu_destroy;
     xsc->set_nr_irqs = xics_kvm_set_nr_irqs;
     xsc->set_nr_servers = xics_kvm_set_nr_servers;
 }

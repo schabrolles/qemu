@@ -4007,6 +4007,36 @@
 ##
 { 'command': 'query-memory-devices', 'returns': ['MemoryDeviceInfo'] }
 
+##
+# @sPAPRCPUSocket:
+#
+# Information about sPAPR CPU devices
+#
+# @hotplugged: true if device was hotplugged
+#
+# @hotpluggable: true if device if could be added/removed while machine is running
+#
+# Since: 2.4
+##
+
+{ 'struct': 'sPAPRCPUSocket',
+  'data': { '*id': 'str',
+            'hotplugged': 'bool',
+            'hotpluggable': 'bool'
+          }
+}
+
+##
+# @query-spapr-cpu-socket:
+#
+# Returns information for all sPAPR CPU devices
+#
+# Returns: a list of @sPAPRCPUSocket.
+#
+# Since: 2.4
+##
+{ 'command': 'query-spapr-cpu-sockets', 'returns': ['sPAPRCPUSocket'] }
+
 ## @ACPISlotType
 #
 # @DIMM: memory slot

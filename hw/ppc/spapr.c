@@ -42,6 +42,7 @@
 #include "mmu-hash64.h"
 #include "qom/cpu.h"
 
+#include "hw/ppc/cpu-socket.h"
 #include "hw/boards.h"
 #include "hw/ppc/ppc.h"
 #include "hw/loader.h"
@@ -65,8 +66,12 @@
 
 #include "hw/compat.h"
 #include "qemu/cutils.h"
+#include "qemu-common.h"
+#include "qmp-commands.h"
 
 #include <libfdt.h>
+
+static int smp_max_cores, smp_nr_sockets;
 
 /* SLOF memory layout:
  *
@@ -93,6 +98,9 @@
 #define PHANDLE_XICP            0x00001111
 
 #define HTAB_SIZE(spapr)        (1ULL << ((spapr)->htab_shift))
+
+static QLIST_HEAD(cpu_unplug_list, CPUUnplug) cpu_unplug_list
+                  = QLIST_HEAD_INITIALIZER(cpu_unplug_list);
 
 static XICSState *try_create_xics(const char *type, int nr_servers,
                                   int nr_irqs, Error **errp)
@@ -622,6 +630,18 @@ static void spapr_populate_cpu_dt(CPUState *cs, void *fdt, int offset,
         0x80, 0x00, 0x80, 0x00, 0x80, 0x00 };
     uint8_t *pa_features;
     size_t pa_size;
+    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
+    int drc_index;
+
+    if (smc->dr_cpu_enabled) {
+        drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_CPU, index);
+        g_assert(drc);
+        drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+        drc_index = drck->get_index(drc);
+        _FDT((fdt_setprop_cell(fdt, offset, "ibm,my-drc-index", drc_index)));
+    }
 
     _FDT((fdt_setprop_cell(fdt, offset, "reg", index)));
     _FDT((fdt_setprop_string(fdt, offset, "device_type", "cpu")));
@@ -988,6 +1008,16 @@ static void spapr_finalize_fdt(sPAPRMachineState *spapr,
 
     if (smc->dr_lmb_enabled) {
         _FDT(spapr_drc_populate_dt(fdt, 0, NULL, SPAPR_DR_CONNECTOR_TYPE_LMB));
+    }
+
+    if (smc->dr_cpu_enabled) {
+        int offset = fdt_path_offset(fdt, "/cpus");
+        ret = spapr_drc_populate_dt(fdt, offset, NULL,
+                                    SPAPR_DR_CONNECTOR_TYPE_CPU);
+        if (ret < 0) {
+            error_report("Couldn't set up CPU DR device tree properties");
+            exit(1);
+        }
     }
 
     _FDT((fdt_pack(fdt)));
@@ -1728,6 +1758,58 @@ static void spapr_validate_node_memory(MachineState *machine, Error **errp)
     }
 }
 
+static void spapr_cpu_destroy(PowerPCCPU *cpu)
+{
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+
+    xics_cpu_destroy(spapr->icp, cpu);
+    qemu_unregister_reset(spapr_cpu_reset, cpu);
+}
+
+static void spapr_sanitize_cpu_topology(Error **errp)
+{
+    int smp_nr_cores;
+    QemuOpts *opts = qemu_opts_find(qemu_find_opts("smp-opts"), NULL);
+    int sockets = opts ? qemu_opt_get_number(opts, "sockets", 0) : 0;
+
+    /*
+     * Don't support topologies where number of CPUs specified is even
+     * less than the number of SMT threads.
+     */
+    if (smp_cpus < smp_threads) {
+        error_setg(errp, "Can't boot with cpus(%d) less than threads(%d)",
+                   smp_cpus, smp_threads);
+        return;
+    }
+
+    /*
+     * Maximum cores possible and the current number of cores the
+     * guest boots with are calculated based on max_cpus and smp_cpus
+     * respectively.
+     */
+    smp_max_cores = DIV_ROUND_UP(max_cpus, smp_threads);
+    smp_nr_cores = DIV_ROUND_UP(smp_cpus, smp_threads);
+
+    /*
+     * Deduce the number of sockets based on number of CPUs, cores
+     * and threads. If "sockets=" hasn't been explicitly specified
+     * go with 1 core per socket.
+     */
+    smp_nr_sockets = DIV_ROUND_UP(smp_cpus, smp_cores * smp_threads);
+    smp_nr_sockets = sockets ? smp_nr_sockets : smp_nr_cores;
+
+    /*
+     * There can be topologies where the number of CPUs specified can't
+     * fully fit into cores and will result in partially populated cores.
+     * Prevent that by ensuring that we boot only full cores.
+     */
+    if (smp_nr_cores < smp_nr_sockets) {
+        smp_nr_sockets = smp_nr_cores;
+    }
+
+    smp_cores_per_socket = smp_nr_cores/smp_nr_sockets;
+}
+
 /* pSeries LPAR / sPAPR hardware init */
 static void ppc_spapr_init(MachineState *machine)
 {
@@ -1736,7 +1818,6 @@ static void ppc_spapr_init(MachineState *machine)
     const char *kernel_filename = machine->kernel_filename;
     const char *kernel_cmdline = machine->kernel_cmdline;
     const char *initrd_filename = machine->initrd_filename;
-    PowerPCCPU *cpu;
     PCIHostState *phb;
     int i;
     MemoryRegion *sysmem = get_system_memory();
@@ -1750,6 +1831,8 @@ static void ppc_spapr_init(MachineState *machine)
     long load_limit, fw_size;
     bool kernel_le = false;
     char *filename;
+    int smt = kvmppc_smt_threads();
+    Object *socket;
 
     msi_nonbroken = true;
 
@@ -1794,6 +1877,8 @@ static void ppc_spapr_init(MachineState *machine)
     /* Setup a load limit for the ramdisk leaving room for SLOF and FDT */
     load_limit = MIN(spapr->rma_size, RTAS_MAX_ADDR) - FW_OVERHEAD;
 
+    spapr_sanitize_cpu_topology(&error_abort);
+
     /* Set up Interrupt Controller before we create the VCPUs */
     spapr->icp = xics_system_init(machine,
                                   DIV_ROUND_UP(max_cpus * kvmppc_smt_threads(),
@@ -1804,17 +1889,23 @@ static void ppc_spapr_init(MachineState *machine)
         spapr_validate_node_memory(machine, &error_fatal);
     }
 
+    if (smc->dr_cpu_enabled) {
+        for (i = 0; i < smp_max_cores; i++) {
+            sPAPRDRConnector *drc =
+                spapr_dr_connector_new(OBJECT(machine),
+                                       SPAPR_DR_CONNECTOR_TYPE_CPU, i * smt);
+            qemu_register_reset(spapr_drc_reset, drc);
+        }
+    }
+
     /* init CPUs */
     if (machine->cpu_model == NULL) {
         machine->cpu_model = kvm_enabled() ? "host" : "POWER7";
     }
-    for (i = 0; i < smp_cpus; i++) {
-        cpu = cpu_ppc_init(machine->cpu_model);
-        if (cpu == NULL) {
-            error_report("Unable to find PowerPC CPU definition");
-            exit(1);
-        }
-        spapr_cpu_init(spapr, cpu, &error_fatal);
+
+    for (i = 0; i < smp_nr_sockets; i++) {
+        socket = object_new(TYPE_POWERPC_CPU_SOCKET);
+        object_property_set_bool(socket, true, "realized", &error_abort);
     }
 
     if (kvm_enabled()) {
@@ -2226,10 +2317,294 @@ out:
     error_propagate(errp, local_err);
 }
 
+static void *spapr_populate_hotplug_cpu_dt(DeviceState *dev, CPUState *cs,
+                                           int *fdt_offset,
+                                           sPAPRMachineState *spapr)
+{
+    PowerPCCPU *cpu = POWERPC_CPU(cs);
+    DeviceClass *dc = DEVICE_GET_CLASS(cs);
+    int id = ppc_get_vcpu_dt_id(cpu);
+    void *fdt;
+    int offset, fdt_size;
+    char *nodename;
+
+    fdt = create_device_tree(&fdt_size);
+    nodename = g_strdup_printf("%s@%x", dc->fw_name, id);
+    offset = fdt_add_subnode(fdt, 0, nodename);
+
+    spapr_populate_cpu_dt(cs, fdt, offset, spapr);
+    g_free(nodename);
+
+    *fdt_offset = offset;
+    return fdt;
+}
+
+/*
+ * QMP: info spapr-cpu-sockets
+ */
+static int qmp_spapr_cpu_socket_list(Object *obj, void *opaque)
+{
+    sPAPRCPUSocketList ***prev = opaque;
+
+    if (object_dynamic_cast(obj, TYPE_CPU_SOCKET)) {
+        DeviceClass *dc = DEVICE_GET_CLASS(obj);
+        DeviceState *dev = DEVICE(obj);
+
+        if (dev->realized) {
+            sPAPRCPUSocketList *elem = g_new0(sPAPRCPUSocketList, 1);
+            sPAPRCPUSocket *s = g_new0(sPAPRCPUSocket, 1);
+
+            if (dev->id) {
+                s->has_id = true;
+                s->id = g_strdup(dev->id);
+            }
+            s->hotplugged = dev->hotplugged;
+            s->hotpluggable = dc->hotpluggable;
+            elem->value = s;
+            elem->next = NULL;
+            **prev = elem;
+            *prev = &elem->next;
+        }
+    }
+
+    object_child_foreach(obj, qmp_spapr_cpu_socket_list, opaque);
+    return 0;
+}
+
+sPAPRCPUSocketList *qmp_query_spapr_cpu_sockets(Error **errp)
+{
+    sPAPRCPUSocketList *head = NULL;
+    sPAPRCPUSocketList **prev = &head;
+
+    qmp_spapr_cpu_socket_list(qdev_get_machine(), &prev);
+    return head;
+}
+
+static void spapr_destroy_cpu_core(Object *core)
+{
+    Object *socket = core->parent;
+
+    object_unparent(core);
+    if (socket && object_has_no_children(socket)) {
+        object_unparent(socket);
+    }
+}
+
+static void spapr_cpu_socket_cleanup(void)
+{
+    CPUUnplug *unplug, *next;
+    Object *thread, *core;
+
+    QLIST_FOREACH_SAFE(unplug, &cpu_unplug_list, node, next) {
+        thread = unplug->cpu;
+        core = thread->parent;
+
+        object_unparent(thread);
+        if (core && object_has_no_children(core)) {
+            spapr_destroy_cpu_core(core);
+        }
+        QLIST_REMOVE(unplug, node);
+        g_free(unplug);
+    }
+}
+
+static void spapr_add_cpu_to_unplug_list(Object *cpu)
+{
+    CPUUnplug *unplug = g_malloc(sizeof(*unplug));
+
+    unplug->cpu = cpu;
+    QLIST_INSERT_HEAD(&cpu_unplug_list, unplug, node);
+}
+
+static void spapr_cpu_release(DeviceState *dev, void *opaque)
+{
+    CPUState *cs, *cs_next;
+    int i;
+    int id = ppc_get_vcpu_dt_id(POWERPC_CPU(CPU(dev)));
+    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
+
+    for (i = id; i < id + smp_threads; i++) {
+        CPU_FOREACH_SAFE(cs, cs_next) {
+            PowerPCCPU *cpu = POWERPC_CPU(cs);
+            Object *thread = OBJECT(cs);
+            Object *core = thread->parent;
+
+            if (i == ppc_get_vcpu_dt_id(cpu)) {
+                spapr_cpu_destroy(cpu);
+                cpu_remove_sync(cs);
+
+                /*
+                 * If we are already walking the CPU object hierarchy
+                 * as part of the unplug request, don't again walk up the
+                 * same hierarchy, but instead add this CPU object to the
+                 * unplug list so that it can be removed later safely.
+                 *
+                 * This typically happens when drmgr removal is done
+                 * before issuing the device_del command.
+                 */
+                if (smc->cpu_unplug_active) {
+                    spapr_add_cpu_to_unplug_list(thread);
+                    continue;
+                }
+                object_unparent(thread);
+                if (core && object_has_no_children(core)) {
+                    spapr_destroy_cpu_core(core);
+                }
+            }
+        }
+    }
+}
+
+static void spapr_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
+                            Error **errp)
+{
+    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+    CPUState *cs = CPU(dev);
+    PowerPCCPU *cpu = POWERPC_CPU(cs);
+    int id = ppc_get_vcpu_dt_id(cpu);
+    sPAPRDRConnector *drc =
+        spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_CPU, id);
+    sPAPRDRConnectorClass *drck;
+    int smt = kvmppc_smt_threads();
+    Error *local_err = NULL;
+    void *fdt = NULL;
+    int i, fdt_offset = 0;
+
+    /* Set NUMA node for the added CPUs  */
+    for (i = 0; i < nb_numa_nodes; i++) {
+        if (test_bit(cs->cpu_index, numa_info[i].node_cpu)) {
+            cs->numa_node = i;
+            break;
+        }
+    }
+
+    /*
+     * SMT threads return from here, only main thread (core) will
+     * continue and signal hotplug event to the guest.
+     */
+    if ((id % smt) != 0) {
+        return;
+    }
+
+    if (!smc->dr_cpu_enabled) {
+        /*
+         * This is a cold plugged CPU but the machine doesn't support
+         * DR. So skip the hotplug path ensuring that the CPU is brought
+         * up online with out an associated DR connector.
+         */
+        return;
+    }
+
+    g_assert(drc);
+
+    /*
+     * Setup CPU DT entries only for hotplugged CPUs. For boot time or
+     * coldplugged CPUs DT entries are setup in spapr_finalize_fdt().
+     */
+    if (dev->hotplugged) {
+        fdt = spapr_populate_hotplug_cpu_dt(dev, cs, &fdt_offset, spapr);
+    }
+
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+    drck->attach(drc, dev, fdt, fdt_offset, !dev->hotplugged, &local_err);
+    if (local_err) {
+        g_free(fdt);
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    /*
+     * We send hotplug notification interrupt to the guest only in case
+     * of hotplugged CPUs.
+     */
+    if (dev->hotplugged) {
+        spapr_hotplug_req_add_by_index(drc);
+    } else {
+        /*
+         * HACK to support removal of hotplugged CPU after VM migration:
+         *
+         * Since we want to be able to hot-remove those coldplugged CPUs
+         * started at boot time using -device option at the target VM, we set
+         * the right allocation_state and isolation_state for them, which for
+         * the hotplugged CPUs would be set via RTAS calls done from the
+         * guest during hotplug.
+         *
+         * This allows the coldplugged CPUs started using -device option to
+         * have the right isolation and allocation states as expected by the
+         * CPU hot removal code.
+         *
+         * This hack will be removed once we have DRC states migrated as part
+         * of VM migration.
+         */
+        drck->set_allocation_state(drc, SPAPR_DR_ALLOCATION_STATE_USABLE);
+        drck->set_isolation_state(drc, SPAPR_DR_ISOLATION_STATE_UNISOLATED);
+    }
+
+    return;
+}
+
+static int spapr_cpu_unplug(Object *obj, void *opaque)
+{
+    Error **errp = opaque;
+    DeviceState *dev = DEVICE(obj);
+    CPUState *cs = CPU(dev);
+    PowerPCCPU *cpu = POWERPC_CPU(cs);
+    int id = ppc_get_vcpu_dt_id(cpu);
+    int smt = kvmppc_smt_threads();
+    sPAPRDRConnector *drc =
+        spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_CPU, id);
+    sPAPRDRConnectorClass *drck;
+    Error *local_err = NULL;
+
+    /*
+     * SMT threads return from here, only main thread (core) will
+     * continue and signal hot unplug event to the guest.
+     */
+    if ((id % smt) != 0) {
+        return 0;
+    }
+    g_assert(drc);
+
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+    drck->detach(drc, dev, spapr_cpu_release, NULL, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return -1;
+    }
+
+    /*
+     * In addition to hotplugged CPUs, send the hot-unplug notification
+     * interrupt to the guest for coldplugged CPUs started via -device
+     * option too.
+     */
+    spapr_hotplug_req_remove_by_index(drc);
+
+    return 0;
+}
+
+static int spapr_cpu_core_unplug(Object *obj, void *opaque)
+{
+    Error **errp = opaque;
+
+    object_child_foreach(obj, spapr_cpu_unplug, errp);
+    return 0;
+}
+
+static void spapr_cpu_socket_unplug(HotplugHandler *hotplug_dev,
+                            DeviceState *dev, Error **errp)
+{
+    object_child_foreach(OBJECT(dev), spapr_cpu_core_unplug, errp);
+    if (!QLIST_EMPTY(&cpu_unplug_list)) {
+        spapr_cpu_socket_cleanup();
+    }
+}
+
 static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
     sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         int node;
@@ -2266,13 +2641,69 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
         }
 
         spapr_memory_plug(hotplug_dev, dev, node, errp);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        CPUState *cs = CPU(dev);
+        PowerPCCPU *cpu = POWERPC_CPU(cs);
+
+        spapr_cpu_init(spapr, cpu, errp);
+        spapr_cpu_reset(cpu);
+
+        /*
+         * Fail hotplug on machines where CPU DR isn't enabled.
+         */
+        if (!smc->dr_cpu_enabled && dev->hotplugged) {
+            spapr_cpu_destroy(cpu);
+            cpu_remove_sync(cs);
+            error_setg(errp, "CPU hotplug not supported for this version "
+                "of pseries machine. Use pseries-2.4 or higher");
+            return;
+        }
+
+        /*
+         * Don't support hotplug for topologies that
+         * - that have partially filled cores or
+         * - that have partially filled sockets or
+         * - that can result in partially filled cores/sockets after hotplug.
+         */
+        if (((smp_cpus % smp_threads) || (max_cpus % smp_threads) ||
+            (smp_cpus % (smp_cores * smp_threads)))
+                    && dev->hotplugged) {
+            spapr_cpu_destroy(cpu);
+            cpu_remove_sync(cs);
+            error_setg(errp, "The specified CPU topology with SMT%d mode, "
+                "%d CPUs and %d maxcpus can't support CPU hotplug since "
+                "CPUs can't be fit fully into cores/sockets",
+                smp_threads, smp_cpus, max_cpus);
+            return;
+        }
+
+        spapr_cpu_plug(hotplug_dev, dev, errp);
     }
 }
 
 static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
-    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU_SOCKET)) {
+        if (!smc->dr_cpu_enabled) {
+            error_setg(errp, "CPU hot removal not supported for this version "
+                "of pseries machine. Use pseries-2.4 or higher");
+            return;
+        }
+
+        if ((smp_cpus % smp_threads) || (max_cpus % smp_threads)) {
+            error_setg(errp, "The specified CPU topology with SMT%d mode, "
+                "%d CPUs and %d maxcpus can't support CPU hot removal since "
+                "CPUs can't be fit fully into cores",
+                smp_threads, smp_cpus, max_cpus);
+        }
+
+        smc->cpu_unplug_active = true;
+        spapr_cpu_socket_unplug(hotplug_dev, dev, errp);
+        smc->cpu_unplug_active = false;
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         error_setg(errp, "Memory hot unplug not supported by sPAPR");
     }
 }
@@ -2280,7 +2711,9 @@ static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
 static HotplugHandler *spapr_get_hotpug_handler(MachineState *machine,
                                              DeviceState *dev)
 {
-    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM) ||
+        object_dynamic_cast(OBJECT(dev), TYPE_CPU_SOCKET) ||
+        object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         return HOTPLUG_HANDLER(machine);
     }
     return NULL;
@@ -2324,6 +2757,7 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
     mc->cpu_index_to_socket_id = spapr_cpu_index_to_socket_id;
 
     smc->dr_lmb_enabled = true;
+    smc->dr_cpu_enabled = true;
     fwc->get_dev_path = spapr_get_fw_dev_path;
     nc->nmi_monitor_handler = spapr_nmi;
 }
@@ -2461,6 +2895,7 @@ static void spapr_machine_2_3_instance_options(MachineState *machine)
 
     spapr_machine_2_4_instance_options(machine);
     smc->dr_lmb_enabled = false;
+    smc->dr_cpu_enabled = false;
     savevm_skip_section_footers();
     global_state_set_optional();
     savevm_skip_configuration();
