@@ -99,9 +99,10 @@ static void rtas_ibm_query_pe_dma_window(PowerPCCPU *cpu,
 {
     CPUPPCState *env = &cpu->env;
     sPAPRPHBState *sphb;
-    uint64_t buid;
+    uint64_t buid, max_window_size;
     uint32_t avail, addr, pgmask = 0;
     unsigned current;
+    MachineState *machine = MACHINE(spapr);
 
     if ((nargs != 3) || (nret != 5)) {
         goto param_error_exit;
@@ -129,7 +130,13 @@ static void rtas_ibm_query_pe_dma_window(PowerPCCPU *cpu,
      * for (that is, are reserved for) this PE".
      * Return the maximum number as all RAM was in 4K pages.
      */
-    rtas_st(rets, 2, sphb->dma64_window_size >> SPAPR_TCE_PAGE_SHIFT);
+    if (machine->ram_size == machine->maxram_size) {
+        max_window_size = machine->ram_size;
+    } else {
+        max_window_size = spapr->hotplug_memory_base +
+            memory_region_size(&spapr->hotplug_memory);
+    }
+    rtas_st(rets, 2, max_window_size >> SPAPR_TCE_PAGE_SHIFT);
     rtas_st(rets, 3, pgmask);
     rtas_st(rets, 4, 0); /* DMA migration mask, not supported */
 
