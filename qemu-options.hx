@@ -1551,8 +1551,9 @@ DEF("smb", HAS_ARG, QEMU_OPTION_smb, "", QEMU_ARCH_ALL)
 
 DEF("netdev", HAS_ARG, QEMU_OPTION_netdev,
 #ifdef CONFIG_SLIRP
-    "-netdev user,id=str[,net=addr[/mask]][,host=addr][,ipv6-net=addr[/int]]\n"
-    "         [,ipv6-host=addr][,restrict=on|off][,hostname=host][,dhcpstart=addr]\n"
+    "-netdev user,id=str[,ipv4[=on|off]][,net=addr[/mask]][,host=addr]\n"
+    "         [,ipv6[=on|off]][,ipv6-net=addr[/int]][,ipv6-host=addr]\n"
+    "         [,restrict=on|off][,hostname=host][,dhcpstart=addr]\n"
     "         [,dns=addr][,ipv6-dns=addr][,dnssearch=domain][,tftp=dir]\n"
     "         [,bootfile=f][,hostfwd=rule][,guestfwd=rule]"
 #ifndef _WIN32
@@ -1700,6 +1701,9 @@ Connect user mode stack to VLAN @var{n} (@var{n} = 0 is the default).
 @item id=@var{id}
 @itemx name=@var{name}
 Assign symbolic name for use in monitor commands.
+
+@option{ipv4} and @option{ipv6} specify that either IPv4 or IPv6 must
+be enabled.  If neither is specified both protocols are enabled.
 
 @item net=@var{addr}[/@var{mask}]
 Set IP network address the guest will see. Optionally specify the netmask,
@@ -3841,6 +3845,20 @@ queue @var{all|rx|tx} is an option that can be applied to any netfilter.
 @option{tx}: the filter is attached to the transmit queue of the netdev,
              where it will receive packets sent by the netdev.
 
+@item -object filter-mirror,id=@var{id},netdev=@var{netdevid},outdev=@var{chardevid}[,queue=@var{all|rx|tx}]
+
+filter-mirror on netdev @var{netdevid},mirror net packet to chardev
+@var{chardevid}
+
+@item -object filter-redirector,id=@var{id},netdev=@var{netdevid},indev=@var{chardevid},
+outdev=@var{chardevid}[,queue=@var{all|rx|tx}]
+
+filter-redirector on netdev @var{netdevid},redirect filter's net packet to chardev
+@var{chardevid},and redirect indev's packet to filter.
+Create a filter-redirector we need to differ outdev id from indev id, id can not
+be the same. we can just use indev or outdev, but at least one of indev or outdev
+need to be specified.
+
 @item -object filter-dump,id=@var{id},netdev=@var{dev},file=@var{filename}][,maxlen=@var{len}]
 
 Dump the network traffic on netdev @var{dev} to the file specified by
@@ -3870,7 +3888,7 @@ parameter provides the ID of a previously defined secret that contains
 the AES-256 decryption key. This key should be 32-bytes long and be
 base64 encoded. The @var{iv} parameter provides the random initialization
 vector used for encryption of this particular secret and should be a
-base64 encrypted string of the 32-byte IV.
+base64 encrypted string of the 16-byte IV.
 
 The simplest (insecure) usage is to provide the secret inline
 
