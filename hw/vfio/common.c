@@ -413,9 +413,10 @@ static void vfio_listener_region_add(VFIOMemoryListener *vlistener,
              */
             if (!create.levels) {
                 unsigned entries = create.window_size >> create.page_shift;
-                unsigned pages = (entries * sizeof(uint64_t)) / getpagesize();
+                unsigned pages = MAX(1, (entries * sizeof(uint64_t)) / getpagesize());
+                pages = MAX(pow2ceil(pages) - 1, 1); /* Round up */
                 /* 0..64 = 1; 65..4096 = 2; 4097..262144 = 3; 262145.. = 4 */
-                create.levels = ctz64(pow2ceil(pages) - 1) / 6 + 1;
+                create.levels = ctz64(pages) / 6 + 1;
             }
             ret = ioctl(container->fd, VFIO_IOMMU_SPAPR_TCE_CREATE, &create);
             if (ret) {
@@ -1293,7 +1294,7 @@ static int vfio_eeh_container_op(VFIOContainer *container, uint32_t op)
         return -errno;
     }
 
-    return 0;
+    return ret;
 }
 
 static VFIOContainer *vfio_eeh_as_container(AddressSpace *as)
