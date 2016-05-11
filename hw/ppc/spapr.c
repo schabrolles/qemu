@@ -2256,15 +2256,6 @@ static void spapr_add_lmbs(DeviceState *dev, uint64_t addr, uint64_t size,
     int i, fdt_offset, fdt_size;
     void *fdt;
 
-    /*
-     * Check for DRC connectors and send hotplug notification to the
-     * guest only in case of hotplugged memory. This allows cold plugged
-     * memory to be specified at boot time.
-     */
-    if (!dev->hotplugged) {
-        return;
-    }
-
     for (i = 0; i < nr_lmbs; i++) {
         drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_LMB,
                 addr/SPAPR_MEMORY_BLOCK_SIZE);
@@ -2276,9 +2267,23 @@ static void spapr_add_lmbs(DeviceState *dev, uint64_t addr, uint64_t size,
 
         drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
         drck->attach(drc, dev, fdt, fdt_offset, !dev->hotplugged, errp);
+
+        /*
+         * Remove this when drc->awaiting_allocation gets migrated as
+         * part of DRC state migration.
+         */
+        if (!dev->hotplugged) {
+            drck->set_allocation_state(drc, SPAPR_DR_ALLOCATION_STATE_USABLE);
+            drck->set_isolation_state(drc, SPAPR_DR_ISOLATION_STATE_UNISOLATED);
+        }
         addr += SPAPR_MEMORY_BLOCK_SIZE;
     }
-    spapr_hotplug_req_add_by_count(SPAPR_DR_CONNECTOR_TYPE_LMB, nr_lmbs);
+    /* send hotplug notification to the
+     * guest only in case of hotplugged memory
+     */
+    if (dev->hotplugged) {
+       spapr_hotplug_req_add_by_count(SPAPR_DR_CONNECTOR_TYPE_LMB, nr_lmbs);
+    }
 }
 
 static void spapr_memory_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
@@ -2599,6 +2604,102 @@ static void spapr_cpu_socket_unplug(HotplugHandler *hotplug_dev,
     }
 }
 
+typedef struct sPAPRDIMMState {
+    uint32_t nr_lmbs;
+    uint64_t addr;
+} sPAPRDIMMState;
+
+static void spapr_lmb_release(DeviceState *dev, void *opaque)
+{
+    sPAPRDIMMState *ds = (sPAPRDIMMState *)opaque;
+    HotplugHandler *hotplug_ctrl = NULL;
+
+    if (--ds->nr_lmbs) {
+        sPAPRDRConnector *drc;
+
+        drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_LMB,
+              ds->addr / SPAPR_MEMORY_BLOCK_SIZE);
+        g_assert(drc);
+
+        spapr_hotplug_req_remove_by_index(drc);
+        ds->addr += SPAPR_MEMORY_BLOCK_SIZE;
+        return;
+    }
+
+    g_free(ds);
+
+    /*
+     * Now that all the LMBs have been removed by the guest, call the
+     * pc-dimm unplug handler to cleanup up the pc-dimm device.
+     */
+    hotplug_ctrl = qdev_get_hotplug_handler(dev);
+    hotplug_handler_unplug(hotplug_ctrl, dev, &error_abort);
+}
+
+static void spapr_del_lmbs(DeviceState *dev, uint64_t addr, uint64_t size,
+                           Error **errp)
+{
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
+    uint32_t nr_lmbs = size / SPAPR_MEMORY_BLOCK_SIZE;
+    sPAPRDIMMState *ds = g_malloc0(sizeof(sPAPRDIMMState));
+    int i;
+
+    ds->nr_lmbs = nr_lmbs;
+    ds->addr = addr + SPAPR_MEMORY_BLOCK_SIZE;
+
+    for (i = 0; i < nr_lmbs; i++) {
+        drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_LMB,
+                addr / SPAPR_MEMORY_BLOCK_SIZE);
+        g_assert(drc);
+
+        drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+        drck->detach(drc, dev, spapr_lmb_release, ds, errp);
+        if (!i) {
+            spapr_hotplug_req_remove_by_index(drc);
+        }
+        addr += SPAPR_MEMORY_BLOCK_SIZE;
+    }
+}
+
+static void spapr_memory_unplug(HotplugHandler *hotplug_dev, DeviceState *dev,
+                                Error **errp)
+{
+    sPAPRMachineState *ms = SPAPR_MACHINE(hotplug_dev);
+    PCDIMMDevice *dimm = PC_DIMM(dev);
+    PCDIMMDeviceClass *ddc = PC_DIMM_GET_CLASS(dimm);
+    MemoryRegion *mr = ddc->get_memory_region(dimm);
+
+    pc_dimm_memory_unplug(dev, &ms->hotplug_memory, mr);
+    object_unparent(OBJECT(dev));
+}
+
+static void spapr_memory_unplug_request(HotplugHandler *hotplug_dev,
+                                        DeviceState *dev, Error **errp)
+{
+    Error *local_err = NULL;
+    PCDIMMDevice *dimm = PC_DIMM(dev);
+    PCDIMMDeviceClass *ddc = PC_DIMM_GET_CLASS(dimm);
+    MemoryRegion *mr = ddc->get_memory_region(dimm);
+    uint64_t size = memory_region_size(mr);
+    uint64_t addr;
+
+    if (size > SPAPR_MEMORY_BLOCK_SIZE) {
+        error_setg(&local_err, "Unplug only supported for DIMM with size %llu MiB",
+                   SPAPR_MEMORY_BLOCK_SIZE / M_BYTE);
+        goto out;
+    }
+
+    addr = object_property_get_int(OBJECT(dimm), PC_DIMM_ADDR_PROP, &local_err);
+    if (local_err) {
+        goto out;
+    }
+
+    spapr_del_lmbs(dev, addr, size, &error_abort);
+out:
+    error_propagate(errp, local_err);
+}
+
 static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
@@ -2707,7 +2808,15 @@ static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
         spapr_cpu_socket_unplug(hotplug_dev, dev, errp);
         smc->cpu_unplug_active = false;
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
-        error_setg(errp, "Memory hot unplug not supported by sPAPR");
+        spapr_memory_unplug(hotplug_dev, dev, errp);
+    }
+}
+
+static void spapr_machine_device_unplug_request(HotplugHandler *hotplug_dev,
+                                                DeviceState *dev, Error **errp)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+        spapr_memory_unplug_request(hotplug_dev, dev, errp);
     }
 }
 
@@ -2758,6 +2867,7 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
     hc->plug = spapr_machine_device_plug;
     hc->unplug = spapr_machine_device_unplug;
     mc->cpu_index_to_socket_id = spapr_cpu_index_to_socket_id;
+    hc->unplug_request = spapr_machine_device_unplug_request;
 
     smc->dr_lmb_enabled = true;
     smc->dr_cpu_enabled = true;

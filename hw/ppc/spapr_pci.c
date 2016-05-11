@@ -1125,13 +1125,11 @@ static void spapr_phb_add_pci_device(sPAPRDRConnector *drc,
     void *fdt = NULL;
     int fdt_start_offset = 0, fdt_size;
 
-    if (dev->hotplugged) {
-        fdt = create_device_tree(&fdt_size);
-        fdt_start_offset = spapr_create_pci_child_dt(phb, pdev, fdt, 0);
-        if (!fdt_start_offset) {
-            error_setg(errp, "Failed to create pci child device tree node");
-            goto out;
-        }
+    fdt = create_device_tree(&fdt_size);
+    fdt_start_offset = spapr_create_pci_child_dt(phb, pdev, fdt, 0);
+    if (!fdt_start_offset) {
+        error_setg(errp, "Failed to create pci child device tree node");
+        goto out;
     }
 
     drck->attach(drc, DEVICE(pdev),
