@@ -41,3 +41,4 @@ stub-obj-y += target-monitor-defs.o
 stub-obj-y += target-get-monitor-def.o
 stub-obj-y += vhost.o
 stub-obj-y += qmp_query_spapr_cpu_sockets.o
+stub-obj-y += iohandler.o
