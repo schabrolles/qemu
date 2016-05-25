@@ -2595,8 +2595,8 @@ static int spapr_cpu_core_unplug(Object *obj, void *opaque)
     return 0;
 }
 
-static void spapr_cpu_socket_unplug(HotplugHandler *hotplug_dev,
-                            DeviceState *dev, Error **errp)
+static void spapr_cpu_socket_unplug_request(HotplugHandler *hotplug_dev,
+                                            DeviceState *dev, Error **errp)
 {
     object_child_foreach(OBJECT(dev), spapr_cpu_core_unplug, errp);
     if (!QLIST_EMPTY(&cpu_unplug_list)) {
@@ -2788,6 +2788,14 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
 static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+        spapr_memory_unplug(hotplug_dev, dev, errp);
+    }
+}
+
+static void spapr_machine_device_unplug_request(HotplugHandler *hotplug_dev,
+                                                DeviceState *dev, Error **errp)
+{
     sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU_SOCKET)) {
@@ -2805,17 +2813,9 @@ static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
         }
 
         smc->cpu_unplug_active = true;
-        spapr_cpu_socket_unplug(hotplug_dev, dev, errp);
+        spapr_cpu_socket_unplug_request(hotplug_dev, dev, errp);
         smc->cpu_unplug_active = false;
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
-        spapr_memory_unplug(hotplug_dev, dev, errp);
-    }
-}
-
-static void spapr_machine_device_unplug_request(HotplugHandler *hotplug_dev,
-                                                DeviceState *dev, Error **errp)
-{
-    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         spapr_memory_unplug_request(hotplug_dev, dev, errp);
     }
 }

@@ -992,6 +992,20 @@ void qmp_migrate_incoming(const char *uri, Error **errp)
     once = false;
 }
 
+bool migration_is_blocked(Error **errp)
+{
+    if (qemu_savevm_state_blocked(errp)) {
+        return true;
+    }
+
+    if (migration_blockers) {
+        *errp = error_copy(migration_blockers->data);
+        return true;
+    }
+
+    return false;
+}
+
 void qmp_migrate(const char *uri, bool has_blk, bool blk,
                  bool has_inc, bool inc, bool has_detach, bool detach,
                  Error **errp)
@@ -1014,12 +1028,7 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
         return;
     }
 
-    if (qemu_savevm_state_blocked(errp)) {
-        return;
-    }
-
-    if (migration_blockers) {
-        *errp = error_copy(migration_blockers->data);
+    if (migration_is_blocked(errp)) {
         return;
     }
 
@@ -1597,18 +1606,31 @@ static void migration_completion(MigrationState *s, int current_active_state,
         rp_error = await_return_path_close_on_source(s);
         trace_migration_completion_postcopy_end_after_rp(rp_error);
         if (rp_error) {
-            goto fail;
+            goto fail_invalidate;
         }
     }
 
     if (qemu_file_get_error(s->to_dst_file)) {
         trace_migration_completion_file_err();
-        goto fail;
+        goto fail_invalidate;
     }
 
     migrate_set_state(&s->state, current_active_state,
                       MIGRATION_STATUS_COMPLETED);
     return;
+
+fail_invalidate:
+    /* If not doing postcopy, vm_start() will be called: let's regain
+     * control on images.
+     */
+    if (s->state == MIGRATION_STATUS_ACTIVE) {
+        Error *local_err = NULL;
+
+        bdrv_invalidate_cache_all(&local_err);
+        if (local_err) {
+            error_report_err(local_err);
+        }
+    }
 
 fail:
     migrate_set_state(&s->state, current_active_state,
