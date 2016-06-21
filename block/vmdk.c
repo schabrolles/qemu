@@ -451,7 +451,8 @@ static int vmdk_init_tables(BlockDriverState *bs, VmdkExtent *extent,
                             Error **errp)
 {
     int ret;
-    int l1_size, i;
+    size_t l1_size;
+    int i;
 
     /* read the L1 table */
     l1_size = extent->l1_size * sizeof(uint32_t);
@@ -1247,6 +1248,17 @@ static VmdkExtent *find_extent(BDRVVmdkState *s,
     return NULL;
 }
 
+static inline uint64_t vmdk_find_index_in_cluster(VmdkExtent *extent,
+                                                  int64_t sector_num)
+{
+    uint64_t index_in_cluster, extent_begin_sector, extent_relative_sector_num;
+
+    extent_begin_sector = extent->end_sector - extent->sectors;
+    extent_relative_sector_num = sector_num - extent_begin_sector;
+    index_in_cluster = extent_relative_sector_num % extent->cluster_sectors;
+    return index_in_cluster;
+}
+
 static int64_t coroutine_fn vmdk_co_get_block_status(BlockDriverState *bs,
         int64_t sector_num, int nb_sectors, int *pnum)
 {
@@ -1284,7 +1296,7 @@ static int64_t coroutine_fn vmdk_co_get_block_status(BlockDriverState *bs,
         break;
     }
 
-    index_in_cluster = sector_num % extent->cluster_sectors;
+    index_in_cluster = vmdk_find_index_in_cluster(extent, sector_num);
     n = extent->cluster_sectors - index_in_cluster;
     if (n > nb_sectors) {
         n = nb_sectors;
@@ -1302,6 +1314,8 @@ static int vmdk_write_extent(VmdkExtent *extent, int64_t cluster_offset,
     uLongf buf_len;
     const uint8_t *write_buf = buf;
     int write_len = nb_sectors * 512;
+    int64_t write_offset;
+    int64_t write_end_sector;
 
     if (extent->compressed) {
         if (!extent->has_marker) {
@@ -1320,10 +1334,14 @@ static int vmdk_write_extent(VmdkExtent *extent, int64_t cluster_offset,
         write_buf = (uint8_t *)data;
         write_len = buf_len + sizeof(VmdkGrainMarker);
     }
-    ret = bdrv_pwrite(extent->file,
-                        cluster_offset + offset_in_cluster,
-                        write_buf,
-                        write_len);
+    write_offset = cluster_offset + offset_in_cluster,
+    ret = bdrv_pwrite(extent->file, write_offset, write_buf, write_len);
+
+    write_end_sector = DIV_ROUND_UP(write_offset + write_len, BDRV_SECTOR_SIZE);
+
+    extent->next_cluster_sector = MAX(extent->next_cluster_sector,
+                                      write_end_sector);
+
     if (ret != write_len) {
         ret = ret < 0 ? ret : -EIO;
         goto out;
@@ -1406,7 +1424,6 @@ static int vmdk_read(BlockDriverState *bs, int64_t sector_num,
     BDRVVmdkState *s = bs->opaque;
     int ret;
     uint64_t n, index_in_cluster;
-    uint64_t extent_begin_sector, extent_relative_sector_num;
     VmdkExtent *extent = NULL;
     uint64_t cluster_offset;
 
@@ -1418,9 +1435,7 @@ static int vmdk_read(BlockDriverState *bs, int64_t sector_num,
         ret = get_cluster_offset(bs, extent, NULL,
                                  sector_num << 9, false, &cluster_offset,
                                  0, 0);
-        extent_begin_sector = extent->end_sector - extent->sectors;
-        extent_relative_sector_num = sector_num - extent_begin_sector;
-        index_in_cluster = extent_relative_sector_num % extent->cluster_sectors;
+        index_in_cluster = vmdk_find_index_in_cluster(extent, sector_num);
         n = extent->cluster_sectors - index_in_cluster;
         if (n > nb_sectors) {
             n = nb_sectors;
@@ -1482,7 +1497,6 @@ static int vmdk_write(BlockDriverState *bs, int64_t sector_num,
     VmdkExtent *extent = NULL;
     int ret;
     int64_t index_in_cluster, n;
-    uint64_t extent_begin_sector, extent_relative_sector_num;
     uint64_t cluster_offset;
     VmdkMetaData m_data;
 
@@ -1498,9 +1512,7 @@ static int vmdk_write(BlockDriverState *bs, int64_t sector_num,
         if (!extent) {
             return -EIO;
         }
-        extent_begin_sector = extent->end_sector - extent->sectors;
-        extent_relative_sector_num = sector_num - extent_begin_sector;
-        index_in_cluster = extent_relative_sector_num % extent->cluster_sectors;
+        index_in_cluster = vmdk_find_index_in_cluster(extent, sector_num);
         n = extent->cluster_sectors - index_in_cluster;
         if (n > nb_sectors) {
             n = nb_sectors;
