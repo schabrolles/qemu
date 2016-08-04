@@ -530,7 +530,7 @@ static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
 
         fragment_offset += fragment_len;
 
-    } while (more_frags);
+    } while (fragment_len && more_frags);
 
     return true;
 }
