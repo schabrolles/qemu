@@ -515,7 +515,6 @@ static void bus_set_realized(Object *obj, bool value, Error **err)
 {
     BusState *bus = BUS(obj);
     BusClass *bc = BUS_GET_CLASS(bus);
-    BusChild *kid;
     Error *local_err = NULL;
 
     if (value && !bus->realized) {
@@ -527,18 +526,8 @@ static void bus_set_realized(Object *obj, bool value, Error **err)
             }
 
         }
-
-        /* TODO: recursive realization */
     } else if (!value && bus->realized) {
-        QTAILQ_FOREACH(kid, &bus->children, sibling) {
-            DeviceState *dev = kid->child;
-            object_property_set_bool(OBJECT(dev), false, "realized",
-                                     &local_err);
-            if (local_err != NULL) {
-                break;
-            }
-        }
-        if (bc->unrealize && local_err == NULL) {
+        if (bc->unrealize) {
             bc->unrealize(bus, &local_err);
 
             if (local_err != NULL) {
