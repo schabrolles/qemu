@@ -586,7 +586,7 @@ static void virtio_scsi_push_event(VirtIOSCSI *s, SCSIDevice *dev,
                                    uint32_t event, uint32_t reason)
 {
     VirtIOSCSICommon *vs = VIRTIO_SCSI_COMMON(s);
-    VirtIOSCSIReq *req = virtio_scsi_pop_req(s, vs->event_vq);
+    VirtIOSCSIReq *req;
     VirtIOSCSIEvent *evt;
     VirtIODevice *vdev = VIRTIO_DEVICE(s);
     int in_size;
@@ -595,6 +595,7 @@ static void virtio_scsi_push_event(VirtIOSCSI *s, SCSIDevice *dev,
         return;
     }
 
+    req = virtio_scsi_pop_req(s, vs->event_vq);
     if (!req) {
         s->events_dropped = true;
         return;
@@ -693,7 +694,9 @@ static struct SCSIBusInfo virtio_scsi_scsi_info = {
     .load_request = virtio_scsi_load_request,
 };
 
-void virtio_scsi_common_realize(DeviceState *dev, Error **errp)
+void virtio_scsi_common_realize(DeviceState *dev, Error **errp,
+                                HandleOutput ctrl, HandleOutput evt,
+                                HandleOutput cmd)
 {
     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
     VirtIOSCSICommon *s = VIRTIO_SCSI_COMMON(dev);
@@ -707,12 +710,12 @@ void virtio_scsi_common_realize(DeviceState *dev, Error **errp)
     s->cdb_size = VIRTIO_SCSI_CDB_SIZE;
 
     s->ctrl_vq = virtio_add_queue(vdev, VIRTIO_SCSI_VQ_SIZE,
-                                  virtio_scsi_handle_ctrl);
+                                  ctrl);
     s->event_vq = virtio_add_queue(vdev, VIRTIO_SCSI_VQ_SIZE,
-                                   virtio_scsi_handle_event);
+                                   evt);
     for (i = 0; i < s->conf.num_queues; i++) {
         s->cmd_vqs[i] = virtio_add_queue(vdev, VIRTIO_SCSI_VQ_SIZE,
-                                         virtio_scsi_handle_cmd);
+                                         cmd);
     }
 }
 
@@ -723,7 +726,9 @@ static void virtio_scsi_device_realize(DeviceState *dev, Error **errp)
     static int virtio_scsi_id;
     Error *err = NULL;
 
-    virtio_scsi_common_realize(dev, &err);
+    virtio_scsi_common_realize(dev, &err, virtio_scsi_handle_ctrl,
+                               virtio_scsi_handle_event,
+                               virtio_scsi_handle_cmd);
     if (err != NULL) {
         error_propagate(errp, err);
         return;

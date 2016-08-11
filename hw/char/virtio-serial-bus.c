@@ -674,9 +674,10 @@ static int fetch_active_ports_list(QEMUFile *f, int version_id,
 static int virtio_serial_load(QEMUFile *f, void *opaque, int version_id)
 {
     VirtIOSerial *s = VIRTIO_SERIAL(opaque);
-    uint32_t max_nr_ports, nr_active_ports, ports_map, tmp;
+    uint32_t max_nr_ports, nr_active_ports, ports_map;
     unsigned int i;
     int ret;
+    uint32_t tmp;
 
     if (version_id > 3) {
         return -EINVAL;
@@ -692,9 +693,9 @@ static int virtio_serial_load(QEMUFile *f, void *opaque, int version_id)
         return 0;
     }
 
-    /* The config space */
-    qemu_get_be16s(f, &s->config.cols);
-    qemu_get_be16s(f, &s->config.rows);
+    /* Unused */
+    qemu_get_be16s(f, (uint16_t *) &tmp);
+    qemu_get_be16s(f, (uint16_t *) &tmp);
     qemu_get_be32s(f, &tmp);
 
     max_nr_ports = s->serial.max_virtserial_ports;

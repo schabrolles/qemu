@@ -328,7 +328,7 @@ static void pit_post_load(PITCommonState *s)
     }
 }
 
-static void pit_realizefn(DeviceState *dev, Error **err)
+static void pit_realizefn(DeviceState *dev, Error **errp)
 {
     PITCommonState *pit = PIT_COMMON(dev);
     PITClass *pc = PIT_GET_CLASS(dev);
@@ -344,7 +344,7 @@ static void pit_realizefn(DeviceState *dev, Error **err)
 
     qdev_init_gpio_in(dev, pit_irq_control, 1);
 
-    pc->parent_realize(dev, err);
+    pc->parent_realize(dev, errp);
 }
 
 static Property pit_properties[] = {
