@@ -48,10 +48,9 @@ typedef struct QCowHeader {
     uint64_t size; /* in bytes */
     uint8_t cluster_bits;
     uint8_t l2_bits;
-    uint16_t padding;
     uint32_t crypt_method;
     uint64_t l1_table_offset;
-} QEMU_PACKED QCowHeader;
+} QCowHeader;
 
 #define L2_CACHE_SIZE 16
 
