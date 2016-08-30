@@ -1467,6 +1467,11 @@ static void v9fs_lcreate(void *opaque)
         goto out_nofid;
     }
 
+    if (!strcmp(".", name.data) || !strcmp("..", name.data)) {
+        err = -EEXIST;
+        goto out_nofid;
+    }
+
     fidp = get_fid(pdu, dfid);
     if (fidp == NULL) {
         err = -ENOENT;
@@ -2055,6 +2060,11 @@ static void v9fs_create(void *opaque)
         goto out_nofid;
     }
 
+    if (!strcmp(".", name.data) || !strcmp("..", name.data)) {
+        err = -EEXIST;
+        goto out_nofid;
+    }
+
     fidp = get_fid(pdu, fid);
     if (fidp == NULL) {
         err = -EINVAL;
@@ -2225,6 +2235,11 @@ static void v9fs_symlink(void *opaque)
         goto out_nofid;
     }
 
+    if (!strcmp(".", name.data) || !strcmp("..", name.data)) {
+        err = -EEXIST;
+        goto out_nofid;
+    }
+
     dfidp = get_fid(pdu, dfid);
     if (dfidp == NULL) {
         err = -EINVAL;
@@ -2302,6 +2317,11 @@ static void v9fs_link(void *opaque)
 
     if (name_is_illegal(name.data)) {
         err = -ENOENT;
+        goto out_nofid;
+    }
+
+    if (!strcmp(".", name.data) || !strcmp("..", name.data)) {
+        err = -EEXIST;
         goto out_nofid;
     }
 
@@ -2391,6 +2411,16 @@ static void v9fs_unlinkat(void *opaque)
 
     if (name_is_illegal(name.data)) {
         err = -ENOENT;
+        goto out_nofid;
+    }
+
+    if (!strcmp(".", name.data)) {
+        err = -EINVAL;
+        goto out_nofid;
+    }
+
+    if (!strcmp("..", name.data)) {
+        err = -ENOTEMPTY;
         goto out_nofid;
     }
 
@@ -2503,6 +2533,11 @@ static void v9fs_rename(void *opaque)
 
     if (name_is_illegal(name.data)) {
         err = -ENOENT;
+        goto out_nofid;
+    }
+
+    if (!strcmp(".", name.data) || !strcmp("..", name.data)) {
+        err = -EISDIR;
         goto out_nofid;
     }
 
@@ -2620,6 +2655,12 @@ static void v9fs_renameat(void *opaque)
 
     if (name_is_illegal(old_name.data) || name_is_illegal(new_name.data)) {
         err = -ENOENT;
+        goto out_err;
+    }
+
+    if (!strcmp(".", old_name.data) || !strcmp("..", old_name.data) ||
+        !strcmp(".", new_name.data) || !strcmp("..", new_name.data)) {
+        err = -EISDIR;
         goto out_err;
     }
 
@@ -2840,6 +2881,11 @@ static void v9fs_mknod(void *opaque)
         goto out_nofid;
     }
 
+    if (!strcmp(".", name.data) || !strcmp("..", name.data)) {
+        err = -EEXIST;
+        goto out_nofid;
+    }
+
     fidp = get_fid(pdu, fid);
     if (fidp == NULL) {
         err = -ENOENT;
@@ -2995,6 +3041,11 @@ static void v9fs_mkdir(void *opaque)
 
     if (name_is_illegal(name.data)) {
         err = -ENOENT;
+        goto out_nofid;
+    }
+
+    if (!strcmp(".", name.data) || !strcmp("..", name.data)) {
+        err = -EEXIST;
         goto out_nofid;
     }
 
