@@ -1082,7 +1082,7 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
     unsigned compat_lvl = 0, cpu_version = 0;
     unsigned max_lvl = get_compat_level(cpu_->max_compat);
     int counter;
-    sPAPROptionVector *ov5_guest, *ov5_cas_old, *ov5_updates;
+    sPAPROptionVector *ov1_guest, *ov5_guest, *ov5_cas_old, *ov5_updates;
     bool guest_radix;
 
     /* Parse PVR list */
@@ -1139,6 +1139,7 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
     /* For the future use: here @ov_table points to the first option vector */
     ov_table = list;
 
+    ov1_guest = spapr_ovec_parse_vector(ov_table, 1);
     ov5_guest = spapr_ovec_parse_vector(ov_table, 5);
     if (spapr_ovec_test(ov5_guest, OV5_MMU_BOTH)) {
         error_report("qemu: guest requested hash and radix MMU, which is invalid.");
@@ -1179,7 +1180,7 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
             exit(EXIT_FAILURE);
         }
     }
-
+    spapr->cas_legacy_guest_workaround = !spapr_ovec_test(ov1_guest, OV1_PPC_3_00);
     if (!spapr->cas_reboot) {
         spapr->cas_reboot =
             (spapr_h_cas_compose_response(spapr, args[1], args[2], cpu_update,
