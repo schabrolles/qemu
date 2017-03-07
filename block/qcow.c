@@ -25,7 +25,7 @@
 #include "block/block_int.h"
 #include "qemu/module.h"
 #include <zlib.h>
-#include "qemu/aes.h"
+#include "crypto/aes.h"
 #include "migration/migration.h"
 
 /**************************************************************/
