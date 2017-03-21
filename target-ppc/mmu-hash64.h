@@ -91,6 +91,9 @@ void ppc_hash64_update_rmls(CPUPPCState *env);
 #define HPTE64_V_1TB_SEG        0x4000000000000000ULL
 #define HPTE64_V_VRMA_MASK      0x4001ffffff000000ULL
 
+/* Temporary: */
+#define PATBE1_GR               0x8000000000000000ULL
+
 void ppc_hash64_set_sdr1(PowerPCCPU *cpu, target_ulong value,
                          Error **errp);
 void ppc_hash64_set_external_hpt(PowerPCCPU *cpu, void *hpt, int shift,
