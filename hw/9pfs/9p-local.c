@@ -1022,32 +1022,54 @@ err_out:
 
 static int local_remove(FsContext *ctx, const char *path)
 {
+    int err;
     struct stat stbuf;
-    char *dirpath = g_path_get_dirname(path);
-    char *name = g_path_get_basename(path);
-    int flags = 0;
-    int dirfd;
-    int err = -1;
+    char *buffer;
 
-    dirfd = local_opendir_nofollow(ctx, dirpath);
-    if (dirfd) {
-        goto out;
+    if (ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        buffer = rpath(ctx, path);
+        err =  lstat(buffer, &stbuf);
+        g_free(buffer);
+        if (err) {
+            goto err_out;
+        }
+        /*
+         * If directory remove .virtfs_metadata contained in the
+         * directory
+         */
+        if (S_ISDIR(stbuf.st_mode)) {
+            buffer = g_strdup_printf("%s/%s/%s", ctx->fs_root,
+                                     path, VIRTFS_META_DIR);
+            err = remove(buffer);
+            g_free(buffer);
+            if (err < 0 && errno != ENOENT) {
+                /*
+                 * We didn't had the .virtfs_metadata file. May be file created
+                 * in non-mapped mode ?. Ignore ENOENT.
+                 */
+                goto err_out;
+            }
+        }
+        /*
+         * Now remove the name from parent directory
+         * .virtfs_metadata directory
+         */
+        buffer = local_mapped_attr_path(ctx, path);
+        err = remove(buffer);
+        g_free(buffer);
+        if (err < 0 && errno != ENOENT) {
+            /*
+             * We didn't had the .virtfs_metadata file. May be file created
+             * in non-mapped mode ?. Ignore ENOENT.
+             */
+            goto err_out;
+        }
     }
 
-    if (fstatat(dirfd, path, &stbuf, AT_SYMLINK_NOFOLLOW) < 0) {
-        goto err_out;
-    }
-
-    if (S_ISDIR(stbuf.st_mode)) {
-        flags |= AT_REMOVEDIR;
-    }
-
-    err = local_unlinkat_common(ctx, dirfd, name, flags);
+    buffer = rpath(ctx, path);
+    err = remove(buffer);
+    g_free(buffer);
 err_out:
-    close_preserve_errno(dirfd);
-out:
-    g_free(name);
-    g_free(dirpath);
     return err;
 }
 
