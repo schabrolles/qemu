@@ -25,7 +25,13 @@
 static ssize_t mp_pacl_getxattr(FsContext *ctx, const char *path,
                                 const char *name, void *value, size_t size)
 {
-    return local_getxattr_nofollow(ctx, path, MAP_ACL_ACCESS, value, size);
+    char *buffer;
+    ssize_t ret;
+
+    buffer = rpath(ctx, path);
+    ret = lgetxattr(buffer, MAP_ACL_ACCESS, value, size);
+    g_free(buffer);
+    return ret;
 }
 
 static ssize_t mp_pacl_listxattr(FsContext *ctx, const char *path,
@@ -83,7 +89,13 @@ static int mp_pacl_removexattr(FsContext *ctx,
 static ssize_t mp_dacl_getxattr(FsContext *ctx, const char *path,
                                 const char *name, void *value, size_t size)
 {
-    return local_getxattr_nofollow(ctx, path, MAP_ACL_DEFAULT, value, size);
+    char *buffer;
+    ssize_t ret;
+
+    buffer = rpath(ctx, path);
+    ret = lgetxattr(buffer, MAP_ACL_DEFAULT, value, size);
+    g_free(buffer);
+    return ret;
 }
 
 static ssize_t mp_dacl_listxattr(FsContext *ctx, const char *path,
