@@ -195,8 +195,7 @@ static int spapr_fixup_cpu_numa_dt(void *fdt, int offset, CPUState *cs)
 }
 
 /* Populate the "ibm,pa-features" property */
-static void spapr_populate_pa_features(CPUPPCState *env, void *fdt, int offset,
-                                      bool legacy_guest)
+static void spapr_populate_pa_features(CPUPPCState *env, void *fdt, int offset)
 {
     uint8_t pa_features_206[] = { 6, 0,
         0xf6, 0x1f, 0xc7, 0x00, 0x80, 0xc0 };
@@ -263,12 +262,6 @@ static void spapr_populate_pa_features(CPUPPCState *env, void *fdt, int offset,
     if (kvmppc_has_cap_htm() && pa_size > 24) {
         pa_features[24] |= 0x80;    /* Transactional memory support */
     }
-    if (legacy_guest && pa_size > 40) {
-        /* Workaround for broken kernels that attempt (guest) radix
-         * mode when they can't handle it, if they see the radix bit set
-         * in pa-features. So hide it from them. */
-        pa_features[40 + 2] &= ~0x80; /* Radix MMU */
-    }
 
     _FDT((fdt_setprop(fdt, offset, "ibm,pa-features", pa_features, pa_size)));
 }
@@ -283,7 +276,6 @@ static int spapr_fixup_cpu_dt(void *fdt, sPAPRMachineState *spapr)
 
     CPU_FOREACH(cs) {
         PowerPCCPU *cpu = POWERPC_CPU(cs);
-        CPUPPCState *env = &cpu->env;
         DeviceClass *dc = DEVICE_GET_CLASS(cs);
         int index = ppc_get_vcpu_dt_id(cpu);
 
@@ -325,9 +317,6 @@ static int spapr_fixup_cpu_dt(void *fdt, sPAPRMachineState *spapr)
         if (ret < 0) {
             return ret;
         }
-
-        spapr_populate_pa_features(env, fdt, offset,
-                                         spapr->cas_legacy_guest_workaround);
     }
     return ret;
 }
@@ -524,7 +513,7 @@ static void spapr_populate_cpu_dt(CPUState *cs, void *fdt, int offset,
                           page_sizes_prop, page_sizes_prop_size)));
     }
 
-    spapr_populate_pa_features(env, fdt, offset, false);
+    spapr_populate_pa_features(env, fdt, offset);
 
     _FDT((fdt_setprop_cell(fdt, offset, "ibm,chip-id",
                            cs->cpu_index / vcpus_per_socket)));
