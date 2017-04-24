@@ -75,13 +75,6 @@ static void renameat_preserve_errno(int odirfd, const char *opath, int ndirfd,
     errno = serrno;
 }
 
-static void unlinkat_preserve_errno(int dirfd, const char *path, int flags)
-{
-    int serrno = errno;
-    unlinkat(dirfd, path, flags);
-    errno = serrno;
-}
-
 #define VIRTFS_META_DIR ".virtfs_metadata"
 
 static char *local_mapped_attr_path(FsContext *ctx, const char *path)
@@ -925,68 +918,49 @@ out:
 static int local_link(FsContext *ctx, V9fsPath *oldpath,
                       V9fsPath *dirpath, const char *name)
 {
-    char *odirpath = g_path_get_dirname(oldpath->data);
-    char *oname = g_path_get_basename(oldpath->data);
-    int ret = -1;
-    int odirfd, ndirfd;
+    int ret;
+    V9fsString newpath;
+    char *buffer, *buffer1;
+    int serrno;
 
-    odirfd = local_opendir_nofollow(ctx, odirpath);
-    if (odirfd == -1) {
-        goto out;
-    }
+    v9fs_string_init(&newpath);
+    v9fs_string_sprintf(&newpath, "%s/%s", dirpath->data, name);
 
-    ndirfd = local_opendir_nofollow(ctx, dirpath->data);
-    if (ndirfd == -1) {
-        close_preserve_errno(odirfd);
-        goto out;
-    }
-
-    ret = linkat(odirfd, oname, ndirfd, name, 0);
+    buffer = rpath(ctx, oldpath->data);
+    buffer1 = rpath(ctx, newpath.data);
+    ret = link(buffer, buffer1);
+    g_free(buffer);
     if (ret < 0) {
-        goto out_close;
+        goto out;
     }
 
     /* now link the virtfs_metadata files */
     if (ctx->export_flags & V9FS_SM_MAPPED_FILE) {
-        int omap_dirfd, nmap_dirfd;
+        char *vbuffer, *vbuffer1;
 
-        ret = mkdirat(ndirfd, VIRTFS_META_DIR, 0700);
-        if (ret < 0 && errno != EEXIST) {
-            goto err_undo_link;
+        /* Link the .virtfs_metadata files. Create the metada directory */
+        ret = local_create_mapped_attr_dir(ctx, newpath.data);
+        if (ret < 0) {
+            goto err_out;
         }
-
-        omap_dirfd = openat_dir(odirfd, VIRTFS_META_DIR);
-        if (omap_dirfd == -1) {
-            goto err;
-        }
-
-        nmap_dirfd = openat_dir(ndirfd, VIRTFS_META_DIR);
-        if (nmap_dirfd == -1) {
-            close_preserve_errno(omap_dirfd);
-            goto err;
-        }
-
-        ret = linkat(omap_dirfd, oname, nmap_dirfd, name, 0);
-        close_preserve_errno(nmap_dirfd);
-        close_preserve_errno(omap_dirfd);
+        vbuffer = local_mapped_attr_path(ctx, oldpath->data);
+        vbuffer1 = local_mapped_attr_path(ctx, newpath.data);
+        ret = link(vbuffer, vbuffer1);
+        g_free(vbuffer);
+        g_free(vbuffer1);
         if (ret < 0 && errno != ENOENT) {
-            goto err_undo_link;
+            goto err_out;
         }
-
-        ret = 0;
     }
-    goto out_close;
+    goto out;
 
-err:
-    ret = -1;
-err_undo_link:
-    unlinkat_preserve_errno(ndirfd, name, 0);
-out_close:
-    close_preserve_errno(ndirfd);
-    close_preserve_errno(odirfd);
+err_out:
+    serrno = errno;
+    remove(buffer1);
+    errno = serrno;
 out:
-    g_free(oname);
-    g_free(odirpath);
+    g_free(buffer1);
+    v9fs_string_free(&newpath);
     return ret;
 }
 
