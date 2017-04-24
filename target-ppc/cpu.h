@@ -932,10 +932,6 @@ struct ppc_segment_page_sizes {
     struct ppc_one_seg_page_size sps[PPC_PAGE_SIZES_MAX_SZ];
 };
 
-struct ppc_radix_page_info {
-    uint32_t count;
-    uint32_t entries[PPC_PAGE_SIZES_MAX_SZ];
-};
 
 /*****************************************************************************/
 /* The whole PowerPC CPU context */
